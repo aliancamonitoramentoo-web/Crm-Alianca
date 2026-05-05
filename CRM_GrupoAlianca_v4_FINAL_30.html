@@ -1005,12 +1005,58 @@ const isAdmin=()=>!!(CU&&CU.perfil==='admin');
 // ── CORES / TAGS / STATUS ─────────────────
 const AVC=['#f5a623','#b08fff','#00d97e','#ff8c42','#ff4560','#3d9bff'];
 const avc=i=>AVC[i%AVC.length];
-const TAGL={mo:'📹 Monitoramento',al:'🚨 Alarme',co:'🚪 Acesso',ca:'🎥 CFTV',ra:'📡 Rastreamento'};
-const TAGC={mo:'tmo',al:'tal',co:'tco',ca:'tca',ra:'tra'};
-const STSL={at:'Ativo',pr:'Proposta',ng:'Negociação',pd:'Atraso',vt:'Em andamento'};
+
+// TAGL e TAGC são dinâmicos — leem de DB.adminCfg.servicos em tempo real
+const TAGL_BASE={mo:'📹 Monitoramento',al:'🚨 Alarme',co:'🚪 Acesso',ca:'🎥 CFTV',ra:'📡 Rastreamento'};
+const TAGC_BASE={mo:'tmo',al:'tal',co:'tco',ca:'tca',ra:'tra'};
+
+// Proxy dinâmico que sempre reflete DB.adminCfg
+const TAGL = new Proxy({}, {
+  get(_, k){
+    const cfg = (typeof DB!=='undefined'&&DB.adminCfg?.servicos)||[];
+    const found = cfg.find(s=>s.key===k);
+    if(found) return found.label;
+    return TAGL_BASE[k]||k;
+  },
+  ownKeys(){
+    const cfg = (typeof DB!=='undefined'&&DB.adminCfg?.servicos)||[];
+    const base = Object.keys(TAGL_BASE);
+    const extra = cfg.map(s=>s.key).filter(k=>!base.includes(k));
+    return [...base, ...extra];
+  },
+  has(_, k){ return true; }
+});
+const TAGC = new Proxy({}, {
+  get(_, k){ return TAGC_BASE[k]||'tmo'; }
+});
+
+// Status também dinâmico
+const STSL_BASE={at:'Ativo',pr:'Proposta',ng:'Negociação',pd:'Atraso',vt:'Em andamento'};
+const STSL = new Proxy({}, {
+  get(_, k){
+    const cfg = (typeof DB!=='undefined'&&DB.adminCfg?.status)||[];
+    const found = cfg.find(s=>s.key===k);
+    if(found) return found.label;
+    return STSL_BASE[k]||k;
+  }
+});
 const STSC={at:'at',pr:'pr',ng:'ng',pd:'pd',vt:'vt'};
-const tg=k=>`<span class="tg ${TAGC[k]||'tmo'}">${TAGL[k]||k}</span>`;
-const st=s=>`<span class="st ${STSC[s]||'at'}">${STSL[s]||s}</span>`;
+
+// tg() e st() agora refletem configurações do painel admin
+const tg=k=>{
+  const cfg=(typeof DB!=='undefined'&&DB.adminCfg?.servicos)||[];
+  const srv=cfg.find(s=>s.key===k);
+  const label=srv?srv.label:(TAGL_BASE[k]||k);
+  const cor=srv?srv.cor:'#f5a623';
+  return `<span class="tg" style="background:${cor}18;color:${cor};border:1px solid ${cor}33">${label}</span>`;
+};
+const st=s=>{
+  const cfg=(typeof DB!=='undefined'&&DB.adminCfg?.status)||[];
+  const sts=cfg.find(x=>x.key===s);
+  const label=sts?sts.label:(STSL_BASE[s]||s);
+  const cor=sts?sts.cor:'#f5a623';
+  return `<span class="st" style="background:${cor}18;color:${cor}">${label}</span>`;
+};
 const fmtR=v=>'R$ '+(parseInt(v)||0).toLocaleString('pt-BR');
 const parseR=s=>parseInt((s||'0').replace(/\D/g,''))||0;
 const nowStr=()=>new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
@@ -2055,6 +2101,10 @@ const M={
     if($('f2')&&type==='os')$('f2').innerHTML=tecOpts;
     if($('f0')&&type==='contrato')$('f0').innerHTML=empOpts;
     if($('f3')&&type==='agenda')$('f3').innerHTML=empOpts;
+    // Serviços dinâmicos — lê de DB.adminCfg
+    if($('f6'))  $('f6').innerHTML=optsServicos();
+    if($('cli-tag')) $('cli-tag').innerHTML=optsServicos();
+    if($('vr-tag'))  $('vr-tag').innerHTML=optsServicos();
     $('MOD').classList.add('open');
   },
   close(){
@@ -2261,6 +2311,13 @@ function abrirGrupoDoItem(pageId){
   });
 }
 
+
+// ── Gera options de serviços dinamicamente ────────
+function optsServicos(selected){
+  const base=[{key:'mo',label:'📹 Monitoramento 24h'},{key:'ca',label:'🎥 CFTV / Câmeras'},{key:'al',label:'🚨 Alarmes'},{key:'co',label:'🚪 Controle de Acesso'},{key:'ra',label:'📡 Rastreamento'}];
+  const lista=(DB.adminCfg?.servicos?.length?DB.adminCfg.servicos:base);
+  return lista.map(s=>`<option value="${s.key}"${s.key===selected?' selected':''}>${s.label}</option>`).join('');
+}
 
 function toggleTipoCli(tipo){
   const isPF=tipo==='pf';
@@ -2481,11 +2538,7 @@ function abrirVenda(empNome){
   $('mod-body').innerHTML=`
     <div style="font-size:12px;color:var(--t2);margin-bottom:12px">Adicionar oportunidade de venda para <strong style="color:var(--t1)">${empNome}</strong> no Pipeline.</div>
     <div class="fg"><label>Serviço de Interesse</label>
-      <select class="fc" id="vr-tag">
-        <option value="mo">📹 Monitoramento 24h</option><option value="ca">🎥 CFTV / Câmeras</option>
-        <option value="al">🚨 Alarmes</option><option value="co">🚪 Controle de Acesso</option>
-        <option value="ra">📡 Rastreamento</option>
-      </select>
+      <select class="fc" id="vr-tag">${optsServicos()}</select>
     </div>
     <div class="fg2">
       <div class="fg"><label>Valor Estimado (R$)</label><input class="fc" id="vr-val" placeholder="Ex: 2500"></div>
@@ -3429,11 +3482,14 @@ function adminAddStage(){
 function rAdmServicos(){
   const el=$('adm-servicos'); if(!el) return;
   el.innerHTML=DB.adminCfg.servicos.map((s,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(28,48,80,.4)">
-    <span class="tg" style="background:${s.cor}22;color:${s.cor};font-size:10px;padding:2px 7px;border-radius:20px;font-weight:700">${s.label.split(' ')[0]}</span>
-    <span style="flex:1;font-size:13px"><span class="ed" contenteditable="true" onblur="DB.adminCfg.servicos[${i}].label=this.textContent;autoSave()">${s.label}</span></span>
+    <span class="tg" style="background:${s.cor}18;color:${s.cor};border:1px solid ${s.cor}33;font-size:10px;padding:2px 7px;border-radius:20px;font-weight:700">${s.label.split(' ')[0]}</span>
+    <span style="flex:1;font-size:13px"><span class="ed" contenteditable="true" onblur="DB.adminCfg.servicos[${i}].label=this.textContent;rAdmServicos();autoSave()">${s.label}</span></span>
     <input type="color" value="${s.cor}" style="width:28px;height:28px;border:none;background:none;cursor:pointer;border-radius:5px" onchange="DB.adminCfg.servicos[${i}].cor=this.value;rAdmServicos();autoSave()">
     ${DB.adminCfg.servicos.length>1?`<button class="btn br sm" onclick="DB.adminCfg.servicos.splice(${i},1);rAdmServicos();autoSave()">🗑️</button>`:''}
   </div>`).join('');
+  // Atualiza gráfico de pizza dos serviços
+  if(charts['ch-pie']){charts['ch-pie'].destroy();delete charts['ch-pie'];}
+  setTimeout(initCharts,100);
 }
 function adminAddServico(){
   const nome=prompt('Nome do serviço (ex: 🔒 Segurança Eletrônica):','');
