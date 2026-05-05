@@ -352,10 +352,10 @@ tr:hover td{background:rgba(255,255,255,.017);}
       <span>💰 Financeiro</span><span class="ns-arrow" id="arr-fin">▾</span>
     </div>
     <div class="nav-group adm" id="nav-fin">
-      <div class="ni adm" data-p="financeiro" onclick="go('financeiro',this)"><span class="nic">💰</span>Fluxo de Caixa</div>
-      <div class="ni adm" data-p="cobrancas" onclick="go('cobrancas',this)"><span class="nic">🧾</span>Cobranças<span class="nb r" id="nb-cob">0</span></div>
-      <div class="ni adm" data-p="relatorios" onclick="go('relatorios',this)"><span class="nic">📈</span>Relatórios</div>
-      <div class="ni adm" data-p="equipe" onclick="go('equipe',this)"><span class="nic">👥</span>Equipe &amp; Metas</div>
+      <div class="ni" data-p="financeiro" onclick="go('financeiro',this)"><span class="nic">💰</span>Fluxo de Caixa</div>
+      <div class="ni" data-p="cobrancas" onclick="go('cobrancas',this)"><span class="nic">🧾</span>Cobranças<span class="nb r" id="nb-cob">0</span></div>
+      <div class="ni" data-p="relatorios" onclick="go('relatorios',this)"><span class="nic">📈</span>Relatórios</div>
+      <div class="ni" data-p="equipe" onclick="go('equipe',this)"><span class="nic">👥</span>Equipe &amp; Metas</div>
     </div>
 
     <!-- ── ADMIN (colapsável) ── -->
@@ -363,9 +363,9 @@ tr:hover td{background:rgba(255,255,255,.017);}
       <span>⚙️ Admin</span><span class="ns-arrow" id="arr-adm">▾</span>
     </div>
     <div class="nav-group adm" id="nav-adm">
-      <div class="ni adm" data-p="usuarios" onclick="go('usuarios',this)"><span class="nic">🔐</span>Usuários &amp; Acessos</div>
-      <div class="ni adm" data-p="admin" onclick="go('admin',this)"><span class="nic">🛠️</span>Painel Admin</div>
-      <div class="ni adm" data-p="config" onclick="go('config',this)"><span class="nic">⚙️</span>Configurações</div>
+      <div class="ni" data-p="usuarios" onclick="go('usuarios',this)"><span class="nic">🔐</span>Usuários &amp; Acessos</div>
+      <div class="ni" data-p="admin" onclick="go('admin',this)"><span class="nic">🛠️</span>Painel Admin</div>
+      <div class="ni" data-p="config" onclick="go('config',this)"><span class="nic">⚙️</span>Configurações</div>
     </div>
 
   </nav>
@@ -1177,16 +1177,24 @@ function applyProfile(){
   $('snm').textContent=CU.nome;
   $('srl').textContent=adm?'Sócio Administrador':'Colaborador';
   $('sbadge').style.display=adm?'inline-block':'none';
-  // Mostra/oculta elementos de admin (não mexe nos nav-group)
-  document.querySelectorAll('.adm:not(.nav-group)').forEach(el=>{
-    const t = el.tagName.toLowerCase();
-    if(adm){
-      if(el.classList.contains('ns') || el.classList.contains('ns-col')) el.style.display='flex';
-      else if(el.classList.contains('ni')) el.style.display='flex';
-      else if(t==='button'||t==='label') el.style.display='inline-flex';
-      else el.style.display='flex';
+  // Mostra/oculta elementos de admin
+  document.querySelectorAll('.adm').forEach(el=>{
+    if(el.classList.contains('nav-group')){
+      // nav-group: controla via maxHeight, não display
+      // Quando não é admin, força maxHeight 0 e remove open
+      if(!adm){ el.classList.remove('open'); el.style.maxHeight='0'; el.style.overflow='hidden'; }
+      // Quando é admin, deixa o toggleNav controlar
     } else {
-      el.style.display='none';
+      // Todos os outros elementos adm
+      const t = el.tagName.toLowerCase();
+      if(adm){
+        if(el.classList.contains('ns-col')) el.style.display='flex';
+        else if(el.classList.contains('ni')) el.style.display='flex';
+        else if(t==='button') el.style.display='inline-flex';
+        else el.style.display='flex';
+      } else {
+        el.style.display='none';
+      }
     }
   });
 }
