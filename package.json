@@ -1,12 +1,7 @@
 {
   "name": "alianca-crm",
   "version": "1.0.0",
-  "description": "CRM Grupo Aliança Monitoramento",
   "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "express": "^4.18.2"
-  }
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "express": "^4.18.2" }
 }
