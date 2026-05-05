@@ -5063,10 +5063,46 @@ function atualizarStatusJB(){
   }
 }
 
+// ── Recebe dados do JSONBin ───────────────────────
+async function jbReceber(){
+  if(!_jbKey||!_jbBin) return false;
+  try {
+    const url = `/jb/${_jbBin}`;
+    const r=await fetch(url,{headers:{'x-jb-key':_jbKey}});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const data=await r.json();
+    const p=data.record;
+    if(!p?.empresas) return false;
+
+    const tsNuvem=p._ts||0;
+    const tsLocal=DB._ts||0;
+
+    // Se nuvem tem dados mais recentes, aplica
+    if(tsNuvem>tsLocal){
+      ['empresas','contatos','deals','contratos','os','tasks','equips'].forEach(k=>{
+        if(p[k]!==undefined) DB[k]=p[k];
+      });
+      DB._ts=tsNuvem;
+      rTopCli();rPipeline();rClientes();rOS();rTasks();rContratos();rNotifs();
+      salvarLocal();
+      console.log('☁️ Dados atualizados da nuvem ts='+tsNuvem);
+      return true;
+    }
+    return false;
+  } catch(e){
+    console.error('JSONBin receber:', e.message);
+    return false;
+  }
+}
+
 // ── Envia dados para o JSONBin ────────────────────
 async function jbEnviar(manual=false){
   if(!_jbKey||!_jbBin) return;
   try {
+    // Marca timestamp ANTES de enviar
+    DB._ts = Date.now();
+    salvarLocal();
+
     const payload={
       empresas:DB.empresas||[],
       contatos:DB.contatos||[],
@@ -5075,58 +5111,19 @@ async function jbEnviar(manual=false){
       os:DB.os||[],
       tasks:DB.tasks||[],
       equips:DB.equips||{},
-      _ts:Date.now()
+      _ts:DB._ts
     };
-    // Usa proxy local para evitar CORS
-    const url = window.location.origin.includes('localhost')||window.location.origin.includes('railway')
-      ? `/jb/${_jbBin}`
-      : `https://api.jsonbin.io/v3/b/${_jbBin}`;
-    const headers = {'Content-Type':'application/json'};
-    if(url.startsWith('/jb')) headers['x-jb-key']=_jbKey;
-    else headers['X-Master-Key']=_jbKey;
-
-    const r=await fetch(url,{method:'PUT',headers,body:JSON.stringify(payload)});
+    const r=await fetch(`/jb/${_jbBin}`,{
+      method:'PUT',
+      headers:{'Content-Type':'application/json','x-jb-key':_jbKey},
+      body:JSON.stringify(payload)
+    });
     if(!r.ok) throw new Error('HTTP '+r.status);
     if(manual) toast('✅ Dados sincronizados!');
-    console.log('☁️ JSONBin: enviado OK');
+    console.log('☁️ JSONBin: enviado ts='+DB._ts);
   } catch(e){
     console.error('JSONBin enviar:', e.message);
     if(manual) toast('❌ Erro: '+e.message);
-  }
-}
-
-// ── Recebe dados do JSONBin ───────────────────────
-async function jbReceber(){
-  if(!_jbKey||!_jbBin) return false;
-  try {
-    const url = window.location.origin.includes('localhost')||window.location.origin.includes('railway')
-      ? `/jb/${_jbBin}`
-      : `https://api.jsonbin.io/v3/b/${_jbBin}/latest`;
-    const headers = {};
-    if(url.startsWith('/jb')) headers['x-jb-key']=_jbKey;
-    else headers['X-Master-Key']=_jbKey;
-
-    const r=await fetch(url,{headers});
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    const data=await r.json();
-    const p=data.record;
-    if(!p?.empresas) return false;
-
-    const tsNuvem=p._ts||0;
-    const tsLocal=DB._ts||0;
-    if(tsNuvem<=tsLocal) return false;
-
-    ['empresas','contatos','deals','contratos','os','tasks','equips'].forEach(k=>{
-      if(p[k]!==undefined) DB[k]=p[k];
-    });
-    DB._ts=tsNuvem;
-    rTopCli();rPipeline();rClientes();rOS();rTasks();rContratos();rNotifs();
-    salvarLocal();
-    toast('🔄 Dados atualizados!');
-    return true;
-  } catch(e){
-    console.error('JSONBin receber:', e.message);
-    return false;
   }
 }
 
@@ -5134,11 +5131,13 @@ async function jbReceber(){
 function iniciarSyncJB(){
   if(!_jbKey||!_jbBin) return;
   clearInterval(_jbTimer);
-  // Recebe dados da nuvem ao iniciar
+  // Recebe primeiro ao iniciar (pega dados mais recentes da nuvem)
   jbReceber();
-  // Sincroniza a cada 30 segundos
+  // A cada 30s: recebe dados mais novos OU envia se local for mais novo
   _jbTimer=setInterval(async()=>{
-    await jbReceber();
+    const recebeu = await jbReceber();
+    // Se não recebeu nada novo, envia os dados locais
+    if(!recebeu && DB._ts) jbEnviar();
   }, 30000);
   _jbSync=true;
   console.log('☁️ JSONBin: sync iniciado');
