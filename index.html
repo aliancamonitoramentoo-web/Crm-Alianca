@@ -1154,7 +1154,17 @@ async function login(){
       if(!USERS.find(x=>x.id===CU.id)) USERS.push({id:CU.id,nome:CU.nome,login:CU.login,senha:'',perfil:CU.perfil,cor:CU.cor,ini:CU.ini});
       $('LS').style.display='none'; $('APP').classList.add('show');
       applyProfile(); initApp(); return;
-    } catch(e){ $('le').textContent=e.message||'Erro ao conectar ao servidor'; return; }
+    } catch(e){
+      // Se deu 404 ou erro de conexão, limpa API_URL e usa modo local
+      const msg = e.message||'';
+      if(msg.includes('404')||msg.includes('Failed to fetch')||msg.includes('NetworkError')||msg.includes('não configurada')){
+        // Backend não disponível — usa modo local automaticamente
+        API_URL=''; localStorage.removeItem('alianca_api_url'); modoBackend=false;
+        // Continua para modo local abaixo
+      } else {
+        $('le').textContent=msg||'Erro ao conectar ao servidor'; return;
+      }
+    }
   }
 
   // Modo local
