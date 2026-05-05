@@ -911,6 +911,11 @@ tr:hover td{background:rgba(255,255,255,.017);}
             </div>
             <div style="font-size:11px;color:var(--t3)">Sem backend? O CRM funciona normalmente no modo local (dados salvos no navegador).</div>
           </div>
+          <!-- Sincronização JSONBin -->
+          <div style="border-top:1px solid var(--bd);padding-top:13px;display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:11px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:1px">🔄 Sincronização em Tempo Real</div>
+            <div id="jb-status"></div>
+          </div>
           <!-- Google Drive -->
           <div style="border-top:1px solid var(--bd);padding-top:13px;display:flex;flex-direction:column;gap:8px">
             <div style="font-size:11px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:1px">🟢 Google Drive — Backup Automático</div>
@@ -1224,7 +1229,7 @@ function go(id,el){
   if(id==='proposta') setTimeout(rPropostas,100);
   if(id==='historico'){ setTimeout(()=>{popularHistoricoSel();rHistorico(_histCliente);},100); }
   if(id==='whatsapp') setTimeout(rWACfg,100);
-  if(id==='config')   setTimeout(()=>{ atualizarStatusGDrive(); atualizarBackupStats(); atualizarStatusConexao(); setTimeout(atualizarStatusKey,200); },100);
+  if(id==='config')   setTimeout(()=>{ atualizarStatusGDrive(); atualizarBackupStats(); atualizarStatusConexao(); atualizarStatusJB(); setTimeout(atualizarStatusKey,200); },100);
   setTimeout(initCharts,120);
 }
 function addFeed(ic,bg,txt){
@@ -3666,6 +3671,8 @@ function salvarLocal(){
     localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
     _ultimoSave = new Date();
     atualizarBackupStats();
+    // Envia para JSONBin se configurado (debounce 3s)
+    if(_jbKey&&_jbBin){ clearTimeout(window._jbTimer2); window._jbTimer2=setTimeout(()=>jbEnviar(), 3000); }
   } catch(e){ console.error('Erro ao salvar local:', e); }
 }
 function carregarLocal(){
@@ -4992,6 +4999,139 @@ function executarImportacao(){
   alert(msg);
 }
 
+// ═══════════════════════════════════════════════════
+//  ☁️ JSONBIN — Sincronização em Tempo Real
+// ═══════════════════════════════════════════════════
+
+let _jbKey  = localStorage.getItem('jb_key')  || '';
+let _jbBin  = localStorage.getItem('jb_bin')  || '';
+let _jbSync = false;
+let _jbTimer = null;
+
+function salvarJBConfig(){
+  _jbKey = ($('jb-key')?.value||'').trim();
+  _jbBin = ($('jb-bin')?.value||'').trim();
+  localStorage.setItem('jb_key', _jbKey);
+  localStorage.setItem('jb_bin', _jbBin);
+  atualizarStatusJB();
+  autoSave();
+  toast('✅ JSONBin configurado!');
+}
+
+function atualizarStatusJB(){
+  const el=$('jb-status'); if(!el) return;
+  const kEl=$('jb-key'); const bEl=$('jb-bin');
+  if(kEl) kEl.value=_jbKey;
+  if(bEl) bEl.value=_jbBin;
+
+  if(_jbKey&&_jbBin){
+    el.innerHTML=`<div style="background:rgba(0,217,126,.08);border:1px solid rgba(0,217,126,.25);border-radius:9px;padding:11px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:18px">✅</span>
+      <div style="flex:1">
+        <div style="font-size:12.5px;font-weight:700;color:var(--green)">Sincronização ativa</div>
+        <div style="font-size:11px;color:var(--t3)">Dados sincronizados a cada 30 segundos entre todos os usuários</div>
+      </div>
+      <button class="btn bg sm" onclick="jbEnviar(true)">🔄 Sincronizar agora</button>
+    </div>`;
+  } else {
+    el.innerHTML=`<div style="background:var(--s2);border:1px solid var(--bd);border-radius:9px;padding:11px">
+      <div style="font-size:12px;color:var(--t2);margin-bottom:8px">⚠️ Configure o JSONBin para sincronizar dados entre você e o Nivaldo</div>
+      <div style="font-size:11px;color:var(--t3);line-height:1.6;background:rgba(245,166,35,.07);border-radius:7px;padding:8px;margin-bottom:10px">
+        📋 <strong style="color:var(--gold)">Como configurar (grátis, 2 minutos):</strong><br>
+        1. Acesse <strong style="color:var(--gold)">jsonbin.io</strong> → crie conta grátis<br>
+        2. Clique em <strong>API Keys</strong> → <strong>+ Create Access Key</strong><br>
+        3. Marque <strong>Read</strong> e <strong>Write</strong> → copie a chave<br>
+        4. Clique em <strong>Bins</strong> → <strong>+ New Bin</strong> → cole <code style="background:var(--s1);padding:1px 5px;border-radius:4px">{}</code> → salve<br>
+        5. Copie o <strong>Bin ID</strong> (número após /b/) → cole abaixo
+      </div>
+      <div class="fg2" style="margin:0 0 8px">
+        <div class="fg" style="margin:0"><label>API Key do JSONBin</label>
+          <input class="fc" id="jb-key" placeholder="\$2a\$10\$..." value="${_jbKey}"></div>
+        <div class="fg" style="margin:0"><label>Bin ID</label>
+          <input class="fc" id="jb-bin" placeholder="6823abc..." value="${_jbBin}"></div>
+      </div>
+      <button class="btn bg" onclick="salvarJBConfig()" style="width:100%;justify-content:center">💾 Salvar e Ativar Sincronização</button>
+    </div>`;
+  }
+}
+
+// ── Envia dados para o JSONBin ────────────────────
+async function jbEnviar(manual=false){
+  if(!_jbKey||!_jbBin) return;
+  try {
+    const payload={};
+    ['empresas','contatos','deals','stages','tasks','contratos','os','agenda',
+     'cameras','alertas','notifs','wa','feed','movs','tecnicos','cfgN','waTpls',
+     'equips','feedbacks','propostas','historico','lembretes','rascunhos',
+     'emailTpls','waCfg','adminCfg'].forEach(k=>{ if(DB[k]!==undefined) payload[k]=DB[k]; });
+    payload._users=USERS.map(u=>({...u}));
+    payload._ts=Date.now();
+
+    const r=await fetch(`https://api.jsonbin.io/v3/b/${_jbBin}`,{
+      method:'PUT',
+      headers:{'Content-Type':'application/json','X-Access-Key':_jbKey},
+      body:JSON.stringify(payload)
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    if(manual) toast('✅ Dados sincronizados!');
+    console.log('☁️ JSONBin: dados enviados');
+  } catch(e){
+    console.error('JSONBin enviar:', e.message);
+    if(manual) toast('❌ Erro ao sincronizar: '+e.message);
+  }
+}
+
+// ── Recebe dados do JSONBin ───────────────────────
+async function jbReceber(){
+  if(!_jbKey||!_jbBin) return false;
+  try {
+    const r=await fetch(`https://api.jsonbin.io/v3/b/${_jbBin}/latest`,{
+      headers:{'X-Access-Key':_jbKey}
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const data=await r.json();
+    const p=data.record;
+    if(!p?.empresas) return false;
+
+    // Só atualiza se os dados da nuvem são mais recentes
+    const tsNuvem=p._ts||0;
+    const tsLocal=DB._ts||0;
+    if(tsNuvem<=tsLocal) return false;
+
+    // Aplica dados da nuvem
+    ['empresas','contatos','deals','stages','tasks','contratos','os','agenda',
+     'cameras','alertas','notifs','wa','feed','movs','tecnicos','cfgN','waTpls',
+     'equips','feedbacks','propostas','historico','lembretes','rascunhos',
+     'emailTpls','waCfg','adminCfg'].forEach(k=>{ if(p[k]!==undefined) DB[k]=p[k]; });
+    if(p._users?.length){ USERS.length=0; p._users.forEach(u=>USERS.push(u)); }
+    DB._ts=tsNuvem;
+
+    // Re-renderiza tudo
+    rTopCli();rPipeline();rClientes();rOS();rTasks();rContratos();
+    rAgenda();rFinanceiro();rCobrancas();rNotifs();rMapa();
+    salvarLocal();
+    console.log('☁️ JSONBin: dados recebidos');
+    return true;
+  } catch(e){
+    console.error('JSONBin receber:', e.message);
+    return false;
+  }
+}
+
+// ── Inicia sincronização automática ──────────────
+function iniciarSyncJB(){
+  if(!_jbKey||!_jbBin) return;
+  clearInterval(_jbTimer);
+  // Recebe dados da nuvem ao iniciar
+  jbReceber();
+  // Sincroniza a cada 30 segundos
+  _jbTimer=setInterval(async()=>{
+    await jbReceber();
+  }, 30000);
+  _jbSync=true;
+  console.log('☁️ JSONBin: sync iniciado');
+}
+
 function popularHistoricoSel(){
   const sel=$('hist-cliente-sel'); if(!sel) return;
   sel.innerHTML='<option value="">— Selecione um cliente —</option>'
@@ -5038,6 +5178,9 @@ function initApp(){
   setInterval(updAll,15000);
   setTimeout(atualizarBackupStats,800);
   window.addEventListener('beforeunload',()=>{ if(!modoBackend) salvarLocal(); });
+
+  // Inicia sincronização JSONBin
+  setTimeout(()=>{ iniciarSyncJB(); atualizarStatusJB(); }, 1500);
 
   // Restaura backup automático se estava ativo
   const backupIntervalo = localStorage.getItem('alianca_backup_intervalo');
