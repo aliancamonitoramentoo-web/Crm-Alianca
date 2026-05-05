@@ -1535,28 +1535,218 @@ function preencherEnderecoOS(nomeCliente){
 function rOS(){
   const g=$('os-grid');if(!g)return;
   const adm=isAdmin();
-  if(!DB.os.length){g.innerHTML=`<div style="grid-column:1/-1">${empty('🔧','Sem OS','Crie ordens de serviço')}</div>`;return;}
+  let data=[...DB.os];
+  if(typeof _osFilter!=='undefined'&&_osFilter&&_osFilter!=='all') data=data.filter(o=>o.s===_osFilter);
+  if(!data.length){g.innerHTML=`<div style="grid-column:1/-1">${empty('🔧','Sem OS','Clique em "+ Nova OS" para criar')}</div>`;return;}
   const pc={at:100,vt:60,ng:30,pr:10};
   const bc={at:'var(--green)',vt:'var(--gold)',ng:'var(--orange)',pr:'var(--blue)'};
-  g.innerHTML=DB.os.map(o=>`<div class="osc">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span class="osid">${o.oid}</span>${st(o.s)}</div>
-    <div style="font-size:13px;font-weight:700;margin-bottom:6px">${adm?`<span class="ed" contenteditable="true" onblur="editOS(${o.id},'tipo',this.textContent)">${o.tipo}</span>`:o.tipo}</div>
-    <div style="display:flex;gap:10px;font-size:11px;color:var(--t2);flex-wrap:wrap;margin-bottom:5px">
-      <span>🏢 <strong style="color:var(--t1)">${o.cli}</strong></span>
-      <span>👷 ${o.tec}</span>
-      <span style="margin-left:auto;color:var(--gold);font-family:var(--M)">📅 ${o.data}</span>
+  g.innerHTML=data.map(o=>`<div class="osc">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <span class="osid" style="font-weight:800;color:var(--gold)">${o.oid}</span>${st(o.s)}
     </div>
-    ${o.endereco?`<div style="font-size:11px;color:var(--t2);background:var(--s3);border-radius:7px;padding:7px 9px;margin-bottom:5px">
-      📍 ${o.endereco}
-    </div>`:''}
-    ${o.desc?`<div style="font-size:11px;color:var(--t3);font-style:italic;margin-bottom:5px">📝 ${o.desc}</div>`:''}
-    ${adm?`<div style="display:flex;gap:5px;margin-top:7px">
-      <button class="btn bgr sm" onclick="concluirOS(${o.id})">✓ Concluir</button>
-      <button class="btn br sm" onclick="delOS(${o.id})">🗑️</button>
-    </div>`:''}
-    <div class="prog"><div class="pf" style="width:${pc[o.s]||10}%;background:${bc[o.s]||'var(--blue)'}"></div></div>
+    <div style="font-size:13px;font-weight:700;margin-bottom:6px;color:var(--t1)">${o.tipo}</div>
+    <div style="display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--t2);margin-bottom:8px">
+      <span>🏢 <strong style="color:var(--t1)">${o.cli}</strong></span>
+      <span>👷 ${o.tec||'—'} &nbsp;·&nbsp; 📅 ${o.data||'—'}</span>
+      ${o.endereco?`<span style="color:var(--t3)">📍 ${o.endereco}</span>`:''}
+      ${o.desc?`<span style="color:var(--t3);font-style:italic">📝 ${o.desc.substring(0,60)}${o.desc.length>60?'...':''}</span>`:''}
+    </div>
+    <div style="display:flex;gap:5px">
+      <button class="btn bg" style="flex:1;justify-content:center;font-size:11px" onclick="abrirFichaOS(${o.id})">📋 Ver Detalhes / PDF</button>
+      ${adm?`<button class="btn bgr sm" onclick="concluirOS(${o.id})" title="Concluir OS">✓</button>`:''}
+      ${adm?`<button class="btn br sm" onclick="delOS(${o.id})" title="Remover">🗑️</button>`:''}
+    </div>
+    <div class="prog" style="margin-top:8px"><div class="pf" style="width:${pc[o.s]||10}%;background:${bc[o.s]||'var(--blue)'}"></div></div>
   </div>`).join('');
 }
+
+function abrirFichaOS(id){
+  const o=DB.os.find(x=>x.id===id); if(!o) return;
+  const adm=isAdmin();
+  const emp=DB.empresas.find(e=>e.nome===o.cli)||{};
+  const tec=DB.tecnicos.find(t=>(typeof t==='string'?t:t.nome)===o.tec)||{};
+  const tecTel=typeof tec==='object'?tec.tel||'':'';
+
+  $('mod-title').innerHTML=`🔧 ${o.oid} — ${o.tipo}`;
+  $('mod-body').innerHTML=`
+  <div style="display:flex;flex-direction:column;gap:12px">
+
+    <!-- Status e ações -->
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      ${st(o.s)}
+      <button class="btn bg" onclick="gerarPDFOS(${o.id})">📄 Exportar PDF</button>
+      ${adm&&o.s!=='at'?`<button class="btn bgr sm" onclick="concluirOS(${o.id});$('MOD').classList.remove('open')">✓ Concluir OS</button>`:''}
+    </div>
+
+    <!-- Empresa responsável -->
+    <div style="background:var(--s2);border-radius:10px;padding:12px">
+      <div style="font-size:10px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:9px;border-bottom:1px solid var(--bd);padding-bottom:6px">🏢 Empresa Responsável</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
+        <div><div style="color:var(--t3);font-size:10px">Nome</div><div style="font-weight:700">${emp.nome||o.cli}</div></div>
+        <div><div style="color:var(--t3);font-size:10px">Telefone</div><div style="font-weight:700">${emp.tel||'—'}</div></div>
+        <div><div style="color:var(--t3);font-size:10px">CPF / CNPJ</div><div style="font-weight:700">${emp.doc||'—'}</div></div>
+        <div><div style="color:var(--t3);font-size:10px">E-mail</div><div style="font-weight:700">${emp.email||'—'}</div></div>
+        <div style="grid-column:1/-1"><div style="color:var(--t3);font-size:10px">Endereço</div>
+          <div style="font-weight:700">${[emp.rua,emp.num,emp.bairro,emp.cidade].filter(Boolean).join(', ')||o.endereco||'—'}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Informações da OS -->
+    <div style="background:var(--s2);border-radius:10px;padding:12px">
+      <div style="font-size:10px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:9px;border-bottom:1px solid var(--bd);padding-bottom:6px">📋 Informações do Serviço</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
+        <div><div style="color:var(--t3);font-size:10px">Número da OS</div><div style="font-weight:700;color:var(--gold)">${o.oid}</div></div>
+        <div><div style="color:var(--t3);font-size:10px">Tipo</div><div style="font-weight:700">${o.tipo}</div></div>
+        <div><div style="color:var(--t3);font-size:10px">Data / Hora</div><div style="font-weight:700">${o.data||'—'}</div></div>
+        <div><div style="color:var(--t3);font-size:10px">Técnico</div><div style="font-weight:700">${o.tec||'—'}${tecTel?' · '+tecTel:''}</div></div>
+        <div style="grid-column:1/-1"><div style="color:var(--t3);font-size:10px">Endereço de Atendimento</div>
+          <div style="font-weight:700">${o.endereco||'—'}${o.ref?' (Ref: '+o.ref+')':''}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Descrição, Diagnóstico, Solução -->
+    ${o.desc?`<div style="background:var(--s2);border-radius:10px;padding:12px">
+      <div style="font-size:10px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:7px">📝 Descrição do Serviço</div>
+      <div style="font-size:12px;line-height:1.6;color:var(--t2)">${o.desc}</div>
+    </div>`:''}
+
+    ${o.diag?`<div style="background:var(--s2);border-radius:10px;padding:12px">
+      <div style="font-size:10px;font-weight:800;color:var(--orange);text-transform:uppercase;letter-spacing:1px;margin-bottom:7px">🔍 Diagnóstico</div>
+      <div style="font-size:12px;line-height:1.6;color:var(--t2)">${o.diag}</div>
+    </div>`:''}
+
+    ${o.soluc?`<div style="background:var(--s2);border-radius:10px;padding:12px">
+      <div style="font-size:10px;font-weight:800;color:var(--green);text-transform:uppercase;letter-spacing:1px;margin-bottom:7px">✅ Solução Aplicada</div>
+      <div style="font-size:12px;line-height:1.6;color:var(--t2)">${o.soluc}</div>
+    </div>`:''}
+
+    <!-- Campos editáveis para admin -->
+    ${adm?`<div style="background:var(--s2);border-radius:10px;padding:12px">
+      <div style="font-size:10px;font-weight:800;color:var(--t3);text-transform:uppercase;letter-spacing:1px;margin-bottom:9px">✏️ Editar OS</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="fg" style="margin:0"><label>Diagnóstico</label>
+          <textarea class="fc" rows="2" onchange="editOS(${o.id},'diag',this.value)" placeholder="Diagnóstico do problema...">${o.diag||''}</textarea>
+        </div>
+        <div class="fg" style="margin:0"><label>Solução Aplicada</label>
+          <textarea class="fc" rows="2" onchange="editOS(${o.id},'soluc',this.value)" placeholder="Solução aplicada...">${o.soluc||''}</textarea>
+        </div>
+      </div>
+    </div>`:''}
+
+  </div>`;
+
+  const btn=$('mod-save-btn'); if(btn) btn.style.display='none';
+  $('MOD').classList.add('open');
+  $('MOD').onclick=function(ev){
+    if(ev.target===$('MOD')){
+      const b=$('mod-save-btn'); if(b) b.style.display='';
+      $('MOD').onclick=null; $('MOD').classList.remove('open');
+    }
+  };
+}
+
+function gerarPDFOS(id){
+  const o=DB.os.find(x=>x.id===id); if(!o){toast('OS não encontrada!');return;}
+  try{
+    const {jsPDF}=window.jspdf;
+    const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+    const PW=210, M=15;
+    let y=0;
+
+    // ── Header ──
+    doc.setFillColor(6,16,30); doc.rect(0,0,PW,297,'F');
+    doc.setFillColor(245,166,35); doc.rect(0,0,PW,38,'F');
+    doc.setTextColor(0,0,0);
+    doc.setFontSize(18); doc.setFont('helvetica','bold');
+    doc.text('Ordem de Serviço',M,14);
+    doc.setFontSize(11); doc.setFont('helvetica','normal');
+    doc.text(`${o.tipo} · ${o.data||''}`,M,22);
+    doc.setFontSize(9);
+    doc.text(`Por: Grupo Aliança Monitoramento`,M,30);
+    doc.text(`OS Nº: ${o.oid} · ${new Date().toLocaleDateString('pt-BR')}`,PW-M-60,30);
+    y=48;
+
+    const emp=DB.empresas.find(e=>e.nome===o.cli)||{};
+
+    const secao=(titulo,cor=[19,29,47])=>{
+      doc.setFillColor(...cor); doc.rect(M,y,PW-2*M,7,'F');
+      doc.setTextColor(245,166,35); doc.setFontSize(9); doc.setFont('helvetica','bold');
+      doc.text(titulo,M+3,y+5); y+=11;
+    };
+
+    const campo=(label,valor,x,largura)=>{
+      doc.setTextColor(150,170,200); doc.setFontSize(8); doc.setFont('helvetica','normal');
+      doc.text(label,x,y);
+      doc.setTextColor(220,235,255); doc.setFontSize(9.5); doc.setFont('helvetica','bold');
+      const linhas=doc.splitTextToSize(valor||'—',largura-4);
+      doc.text(linhas,x,y+5);
+      return linhas.length*4.5+2;
+    };
+
+    // ── Empresa Responsável ──
+    secao('EMPRESA RESPONSÁVEL');
+    const h1=Math.max(campo('Nome',emp.nome||o.cli,M,90),campo('Telefone',emp.tel||'—',M+95,95));
+    y+=h1+3;
+    const h2=Math.max(campo('CPF / CNPJ',emp.doc||'—',M,90),campo('Endereço',[emp.rua,emp.num,emp.bairro,emp.cidade].filter(Boolean).join(', ')||'—',M+95,95));
+    y+=h2+8;
+
+    // ── Informações da OS ──
+    secao('INFORMAÇÕES DO SERVIÇO');
+    const h3=Math.max(campo('Data / Hora',o.data||'—',M,90),campo('Técnico Responsável',o.tec||'—',M+95,95));
+    y+=h3+3;
+    const h4=Math.max(campo('Tipo de Serviço',o.tipo,M,90),campo('Status',o.s==='at'?'Concluída':o.s==='vt'?'Em Andamento':'Aberta',M+95,95));
+    y+=h4+3;
+    if(o.endereco){
+      const h5=campo('Endereço de Atendimento',o.endereco+(o.ref?' (Ref: '+o.ref+')':''),M,PW-2*M);
+      y+=h5+8;
+    } else { y+=5; }
+
+    // ── Descrição ──
+    if(o.desc){
+      secao('DESCRIÇÃO DO SERVIÇO');
+      doc.setTextColor(220,235,255); doc.setFontSize(9); doc.setFont('helvetica','normal');
+      const linhas=doc.splitTextToSize(o.desc,PW-2*M-6);
+      doc.text(linhas,M+3,y); y+=linhas.length*5+8;
+    }
+
+    // ── Diagnóstico ──
+    if(o.diag){
+      secao('DIAGNÓSTICO',[30,15,5]);
+      doc.setTextColor(220,235,255); doc.setFontSize(9); doc.setFont('helvetica','normal');
+      const linhas=doc.splitTextToSize(o.diag,PW-2*M-6);
+      doc.text(linhas,M+3,y); y+=linhas.length*5+8;
+    }
+
+    // ── Solução ──
+    if(o.soluc){
+      secao('SOLUÇÃO APLICADA',[5,30,15]);
+      doc.setTextColor(220,235,255); doc.setFontSize(9); doc.setFont('helvetica','normal');
+      const linhas=doc.splitTextToSize(o.soluc,PW-2*M-6);
+      doc.text(linhas,M+3,y); y+=linhas.length*5+8;
+    }
+
+    // ── Assinatura ──
+    y=Math.max(y,240);
+    doc.setDrawColor(245,166,35); doc.setLineWidth(0.3);
+    doc.line(M,y,M+80,y); doc.line(PW-M-80,y,PW-M,y);
+    doc.setTextColor(150,170,200); doc.setFontSize(8);
+    doc.text('Assinatura do Técnico',M+5,y+5);
+    doc.text('Assinatura do Cliente',PW-M-75,y+5);
+
+    // ── Footer ──
+    doc.setFillColor(245,166,35); doc.rect(0,285,PW,12,'F');
+    doc.setTextColor(0,0,0); doc.setFontSize(8); doc.setFont('helvetica','normal');
+    doc.text('Grupo Aliança Monitoramento · Segurança Eletrônica Profissional',M,292);
+    doc.text(`OS ${o.oid} · ${o.data||''}`,PW-M-50,292);
+
+    doc.save(`OS_${o.oid}_${(o.cli||'').replace(/\s/g,'_')}.pdf`);
+    toast('✅ PDF gerado! Verifique seus Downloads.');
+    adicionarEvento(o.cli,'os',`PDF da OS gerado: ${o.oid}`,'📄');
+  }catch(e){ toast('❌ Erro ao gerar PDF: '+e.message); console.error(e); }
+}
+
 function editOS(id,f,v){const o=DB.os.find(x=>x.id===id);if(o)o[f]=v.trim();}
 function concluirOS(id){const o=DB.os.find(x=>x.id===id);if(o){o.s='at';rOS();updKPI();toast('OS concluída!');}}
 function delOS(id){if(!confirm('Remover OS?'))return;DB.os=DB.os.filter(x=>x.id!==id);rOS();updKPI();toast('OS removida!');}
@@ -2120,7 +2310,9 @@ const MFRM={
     <div class="fg"><label>Técnico Responsável</label><select class="fc" id="f2"></select></div>
     <div class="fg"><label>Data e Hora</label><input class="fc" id="f3" type="datetime-local"></div>
   </div>
-  <div class="fg"><label>Descrição do Serviço</label><textarea class="fc" id="os-desc" rows="2" placeholder="Detalhes do que será feito..."></textarea></div>`,
+  <div class="fg"><label>Descrição do Serviço</label><textarea class="fc" id="os-desc" rows="2" placeholder="Detalhes do que será feito..."></textarea></div>
+  <div class="fg"><label>Diagnóstico</label><textarea class="fc" id="os-diag" rows="2" placeholder="Problema encontrado..."></textarea></div>
+  <div class="fg"><label>Solução Aplicada</label><textarea class="fc" id="os-soluc" rows="2" placeholder="Como foi resolvido..."></textarea></div>`,
 
   contrato:`<div class="fg2"><div class="fg"><label>Cliente *</label><select class="fc" id="f0"></select></div><div class="fg"><label>Serviço</label><select class="fc" id="f1"><option>Monitoramento 24h</option><option>CFTV + Monitoramento</option><option>Alarme + Acesso</option><option>Solução Completa</option><option>CFTV</option></select></div></div>
   <div class="fg2"><div class="fg"><label>Valor Mensal (R$) *</label><input class="fc" id="f2" placeholder="2000"></div><div class="fg"><label>Vencimento</label><input class="fc" id="f3" type="month"></div></div>`,
@@ -2259,9 +2451,11 @@ const M={
       const cidade=($('os-cidade')?.value||'').trim();
       const ref=($('os-ref')?.value||'').trim();
       const desc=($('os-desc')?.value||'').trim();
+      const diag=($('os-diag')?.value||'').trim();
+      const soluc=($('os-soluc')?.value||'').trim();
       const enderecoFmt=[rua,num,bairro,cidade].filter(Boolean).join(', ')+(ref?` (Ref: ${ref})`:'');
       const oid=uid();
-      DB.os.unshift({id:oid,oid:`OS-${400+DB.os.length+1}`,cli,tipo,tec,data:dataFmt,s:'pr',endereco:enderecoFmt,ref,desc});
+      DB.os.unshift({id:oid,oid:`OS-${400+DB.os.length+1}`,cli,tipo,tec,data:dataFmt,s:'pr',endereco:enderecoFmt,ref,desc,diag,soluc});
       DB.notifs.unshift({ic:'🔧',t:`Nova OS: ${tipo}`,sub:`${cli} — ${tec}`,time:nowStr(),tipo:'unread'});
       addFeed('🔧','rgba(255,140,66,.12)',`OS: ${tipo} — ${cli}`);
       rOS();rNotifs();
