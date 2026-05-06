@@ -1924,21 +1924,92 @@ function waSendMsg(){const i=$('wa-inp');if(!i||!i.value.trim())return;toast('Me
 // ── EQUIPE ────────────────────────────────
 function rEquipe(){
   const g=$('eq-cards');if(!g)return;
-  const members=USERS.map(u=>({...u,f:DB.deals.filter(d=>d.stage===4&&d.ini===u.ini).length,l:DB.deals.filter(d=>d.ini===u.ini).length}));
-  const maxL=Math.max(...members.map(m=>m.l),1);
-  g.innerHTML=members.map(m=>`<div style="background:var(--s2);border:1px solid var(--bd);border-radius:11px;padding:13px">
-    <div style="display:flex;gap:9px;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <div style="display:flex;gap:9px;align-items:center">
-        <div style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;background:${m.cor}22;color:${m.cor}">${m.ini}</div>
-        <div><div style="font-weight:800;font-size:14px">${m.nome}</div><div style="font-size:11px;color:var(--t2)">${m.perfil==='admin'?'Sócio Admin':'Colaborador'}</div></div>
+
+  // ── Técnicos com OS ──────────────────────────────
+  const tecNames=[...new Set([
+    ...DB.tecnicos.map(t=>typeof t==='string'?t:t.nome),
+    ...DB.os.map(o=>o.tec).filter(Boolean)
+  ])];
+
+  const hoje=new Date();
+  const diasNoMes=new Date(hoje.getFullYear(),hoje.getMonth()+1,0).getDate();
+  const feriados=['01/01','21/04','01/05','07/09','12/10','02/11','15/11','25/12']
+    .filter(d=>parseInt(d.split('/')[1])-1===hoje.getMonth()).length;
+  const diasUteis=diasNoMes - feriados - Math.floor(diasNoMes/7)*2;
+
+  g.innerHTML=tecNames.map((nome,i)=>{
+    const tecObj=DB.tecnicos.find(t=>(typeof t==='string'?t:t.nome)===nome);
+    const sal=typeof tecObj==='object'?tecObj.salario||0:0;
+    const osDoTec=DB.os.filter(o=>o.tec===nome);
+    const osCon=osDoTec.filter(o=>o.s==='at');
+    const osAb=osDoTec.filter(o=>o.s!=='at');
+    const totalRec=osDoTec.reduce((a,o)=>a+(o.valor||0),0);
+    const totalLuc=osDoTec.reduce((a,o)=>a+(o.lucro||0),0);
+    const custoDia=sal>0?sal/diasUteis:0;
+    const custoMes=sal||0;
+    const cores=['#f5a623','#3d9bff','#00d97e','#b08fff','#ff8c42','#ff4560'];
+    const cor=cores[i%cores.length];
+    return `<div style="background:var(--s1);border:1px solid var(--bd);border-radius:13px;padding:14px;border-top:3px solid ${cor}">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="width:44px;height:44px;border-radius:50%;background:${cor}22;color:${cor};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900">${nome[0]?.toUpperCase()}</div>
+        <div>
+          <div style="font-weight:800;font-size:14px">${nome}</div>
+          <div style="font-size:11px;color:var(--t3)">${sal>0?`Salário: ${fmtR(sal)}/mês`:'Salário não cadastrado'}</div>
+        </div>
       </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
-      <div style="text-align:center;background:var(--s1);border-radius:8px;padding:7px"><div style="font-size:20px;font-weight:800;color:${m.cor}">${m.f}</div><div style="font-size:9px;color:var(--t3)">FECHADOS</div></div>
-      <div style="text-align:center;background:var(--s1);border-radius:8px;padding:7px"><div style="font-size:20px;font-weight:800">${m.l}</div><div style="font-size:9px;color:var(--t3)">LEADS</div></div>
-    </div>
-    <div class="prog"><div class="pf" style="width:${Math.round(m.l/maxL*100)}%;background:${m.cor}"></div></div>
-  </div>`).join('');
+
+      <!-- OS Stats -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:10px">
+        <div style="background:var(--s2);border-radius:8px;padding:8px;text-align:center">
+          <div style="font-size:18px;font-weight:900;color:var(--blue)">${osDoTec.length}</div>
+          <div style="font-size:9px;color:var(--t3);text-transform:uppercase">Total OS</div>
+        </div>
+        <div style="background:var(--s2);border-radius:8px;padding:8px;text-align:center">
+          <div style="font-size:18px;font-weight:900;color:var(--green)">${osCon.length}</div>
+          <div style="font-size:9px;color:var(--t3);text-transform:uppercase">Concluídas</div>
+        </div>
+        <div style="background:var(--s2);border-radius:8px;padding:8px;text-align:center">
+          <div style="font-size:18px;font-weight:900;color:var(--orange)">${osAb.length}</div>
+          <div style="font-size:9px;color:var(--t3);text-transform:uppercase">Abertas</div>
+        </div>
+      </div>
+
+      <!-- Financeiro -->
+      ${totalRec>0?`<div style="background:var(--s2);border-radius:9px;padding:10px;margin-bottom:8px">
+        <div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">💰 Financeiro do Mês</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
+          <div>
+            <div style="font-size:10px;color:var(--t3)">Receita Gerada</div>
+            <div style="font-size:14px;font-weight:800;color:var(--green)">${fmtR(totalRec)}</div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--t3)">Custo Mensal</div>
+            <div style="font-size:14px;font-weight:800;color:var(--red)">${fmtR(custoMes)}</div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--t3)">Custo/Dia Útil</div>
+            <div style="font-size:14px;font-weight:800;color:var(--orange)">${fmtR(Math.round(custoDia))}</div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--t3)">Lucro Estimado</div>
+            <div style="font-size:14px;font-weight:800;color:${totalLuc>=0?'var(--green)':'var(--red)'}">${fmtR(totalLuc)}</div>
+          </div>
+        </div>
+        ${sal>0?`<div style="font-size:10px;color:var(--t3);margin-top:7px;font-style:italic">📅 ${diasUteis} dias úteis em ${hoje.toLocaleDateString('pt-BR',{month:'long'})} (${feriados} feriado${feriados!==1?'s':''})</div>`:''}
+      </div>`:''}
+
+      <!-- OS recentes -->
+      ${osDoTec.length?`<div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">OS Recentes</div>
+      ${osDoTec.slice(0,3).map(o=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(28,48,80,.4);font-size:11px">
+        <span style="color:var(--gold);font-weight:700">${o.oid}</span>
+        <span style="color:var(--t2)">${o.cli}</span>
+        ${o.valor?`<span style="color:var(--green);font-weight:700">${fmtR(o.valor)}</span>`:'<span style="color:var(--t3)">—</span>'}
+        <span style="${o.s==='at'?'color:var(--green)':'color:var(--orange)'}">${o.s==='at'?'✅':'⏳'}</span>
+      </div>`).join('')}`:''}
+    </div>`;
+  }).join('')||`<div style="grid-column:1/-1">${empty('👷','Nenhum técnico','Cadastre técnicos em Ordens de Serviço')}</div>`;
+
+  // ── Ranking vendedores ──────────────────────────
   const r=$('rank');if(!r)return;
   const s=[...USERS].sort((a,b)=>DB.deals.filter(d=>d.ini===b.ini).length-DB.deals.filter(d=>d.ini===a.ini).length);
   const max=Math.max(...s.map(u=>DB.deals.filter(d=>d.ini===u.ini).length),1);
@@ -2370,7 +2441,8 @@ const MFRM={
     <div class="fg2">
       <div class="fg"><label>WhatsApp</label><input class="fc" id="tec-tel" placeholder="(81) 99999-0000"></div>
       <div class="fg"><label>Especialidade</label><input class="fc" id="tec-esp" placeholder="Ex: CFTV, Alarmes, Elétrica"></div>
-    </div>`,
+    </div>
+    <div class="fg"><label>💰 Salário Mensal (R$)</label><input class="fc" id="tec-sal" type="number" placeholder="Ex: 1800"></div>`,
 };
 const MTIT={lead:'➕ Novo Lead',empresa:'🏢 Cadastrar Empresa',contato:'👤 Novo Contato',cliente:'👥 Novo Cliente',os:'🔧 Nova OS',contrato:'📄 Novo Contrato',agenda:'📅 Novo Evento',usuario:'🔐 Nova Conta de Acesso',mov:'💰 Lançamento Financeiro',tecnico:'👷 Novo Instalador / Técnico'};
 
@@ -2581,7 +2653,8 @@ const M={
       const nome=gv('f0');if(!nome){toast('⚠️ Informe o nome!');return;}
       const tel=($('tec-tel')?.value||'').trim();
       const esp=($('tec-esp')?.value||'').trim();
-      DB.tecnicos.push(tel||esp?{nome,tel,esp}:nome);
+      const salario=parseFloat($('tec-sal')?.value||'0')||0;
+      DB.tecnicos.push(tel||esp||salario?{nome,tel,esp,salario}:nome);
       rTecnicos();M.close();
       addFeed('👷','rgba(245,166,35,.12)',`Técnico cadastrado: ${nome}`);
       autoSave();toast(`👷 ${nome} cadastrado como instalador!`);return;
