@@ -1585,11 +1585,11 @@ function abrirFichaOS(id){
       ${adm&&o.s!=='at'?`<button class="btn bgr sm" onclick="concluirOS(${o.id});$('MOD').classList.remove('open')">✓ Concluir OS</button>`:''}
     </div>
 
-    <!-- Empresa responsável -->
+    <!-- Cliente -->
     <div style="background:var(--s2);border-radius:10px;padding:12px">
-      <div style="font-size:10px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:9px;border-bottom:1px solid var(--bd);padding-bottom:6px">🏢 Empresa Responsável</div>
+      <div style="font-size:10px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:9px;border-bottom:1px solid var(--bd);padding-bottom:6px">👤 Dados do Cliente</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
-        <div><div style="color:var(--t3);font-size:10px">Nome</div><div style="font-weight:700">${emp.nome||o.cli}</div></div>
+        <div><div style="color:var(--t3);font-size:10px">Nome / Razão Social</div><div style="font-weight:700">${emp.nome||o.cli}</div></div>
         <div><div style="color:var(--t3);font-size:10px">Telefone</div><div style="font-weight:700">${emp.tel||'—'}</div></div>
         <div><div style="color:var(--t3);font-size:10px">CPF / CNPJ</div><div style="font-weight:700">${emp.doc||'—'}</div></div>
         <div><div style="color:var(--t3);font-size:10px">E-mail</div><div style="font-weight:700">${emp.email||'—'}</div></div>
@@ -1627,6 +1627,26 @@ function abrirFichaOS(id){
     ${o.soluc?`<div style="background:var(--s2);border-radius:10px;padding:12px">
       <div style="font-size:10px;font-weight:800;color:var(--green);text-transform:uppercase;letter-spacing:1px;margin-bottom:7px">✅ Solução Aplicada</div>
       <div style="font-size:12px;line-height:1.6;color:var(--t2)">${o.soluc}</div>
+    </div>`:''}
+
+    <!-- Lucratividade -->
+    ${o.valor>0?`<div style="background:var(--s2);border-radius:10px;padding:12px">
+      <div style="font-size:10px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:9px;border-bottom:1px solid var(--bd);padding-bottom:6px">💰 Lucratividade da OS</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+        <div style="background:var(--s1);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:18px;font-weight:900;color:var(--green)">${fmtR(o.valor||0)}</div>
+          <div style="font-size:9px;color:var(--t3);text-transform:uppercase;margin-top:2px">Valor Cobrado</div>
+        </div>
+        <div style="background:var(--s1);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:18px;font-weight:900;color:var(--red)">${fmtR(o.valor-(o.lucro||0))}</div>
+          <div style="font-size:9px;color:var(--t3);text-transform:uppercase;margin-top:2px">Custo Técnico/Dia</div>
+        </div>
+        <div style="background:var(--s1);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:18px;font-weight:900;color:${(o.lucro||0)>=0?'var(--green)':'var(--red)'}">${fmtR(o.lucro||0)}</div>
+          <div style="font-size:9px;color:var(--t3);text-transform:uppercase;margin-top:2px">Lucro Estimado</div>
+        </div>
+      </div>
+      ${o.salario?`<div style="font-size:10px;color:var(--t3);margin-top:7px">💡 Cálculo: Salário ${fmtR(o.salario)}/mês ÷ dias úteis do mês (descontando feriados e fins de semana)</div>`:''}
     </div>`:''}
 
     <!-- Campos editáveis para admin -->
@@ -1692,11 +1712,16 @@ function gerarPDFOS(id){
       return linhas.length*4.5+2;
     };
 
-    // ── Empresa Responsável ──
-    secao('EMPRESA RESPONSÁVEL');
-    const h1=Math.max(campo('Nome',emp.nome||o.cli,M,90),campo('Telefone',emp.tel||'—',M+95,95));
+    // ── Grupo Aliança (Prestador) ──
+    secao('EMPRESA PRESTADORA DO SERVIÇO');
+    const h0=Math.max(campo('Nome','Grupo Aliança Monitoramento',M,90),campo('Contato','(81) 3000-0000',M+95,95));
+    y+=h0+8;
+
+    // ── Dados do Cliente ──
+    secao('DADOS DO CLIENTE');
+    const h1=Math.max(campo('Nome / Razão Social',emp.nome||o.cli,M,90),campo('Telefone',emp.tel||'—',M+95,95));
     y+=h1+3;
-    const h2=Math.max(campo('CPF / CNPJ',emp.doc||'—',M,90),campo('Endereço',[emp.rua,emp.num,emp.bairro,emp.cidade].filter(Boolean).join(', ')||'—',M+95,95));
+    const h2=Math.max(campo('CPF / CNPJ',emp.doc||'—',M,90),campo('Endereço',[emp.rua,emp.num,emp.bairro,emp.cidade].filter(Boolean).join(', ')||o.endereco||'—',M+95,95));
     y+=h2+8;
 
     // ── Informações da OS ──
@@ -2317,6 +2342,10 @@ const MFRM={
     <div class="fg"><label>Técnico Responsável</label><select class="fc" id="f2"></select></div>
     <div class="fg"><label>Data e Hora</label><input class="fc" id="f3" type="datetime-local"></div>
   </div>
+  <div class="fg2">
+    <div class="fg"><label>💰 Valor Cobrado (R$)</label><input class="fc" id="os-val" type="number" placeholder="Ex: 350"></div>
+    <div class="fg"><label>Salário do Técnico (R$)</label><input class="fc" id="os-sal" type="number" placeholder="Ex: 1800"></div>
+  </div>
   <div class="fg"><label>Descrição do Serviço</label><textarea class="fc" id="os-desc" rows="2" placeholder="Detalhes do que será feito..."></textarea></div>
   <div class="fg"><label>Diagnóstico</label><textarea class="fc" id="os-diag" rows="2" placeholder="Problema encontrado..."></textarea></div>
   <div class="fg"><label>Solução Aplicada</label><textarea class="fc" id="os-soluc" rows="2" placeholder="Como foi resolvido..."></textarea></div>`,
@@ -2478,12 +2507,29 @@ const M={
       const desc  = ($('os-desc')?.value||'').trim();
       const diag  = ($('os-diag')?.value||'').trim();
       const soluc = ($('os-soluc')?.value||'').trim();
+      const valor = parseFloat($('os-val')?.value||'0')||0;
+      const salario = parseFloat($('os-sal')?.value||'0')||0;
+
+      // Cálculo de lucratividade
+      const hoje = new Date();
+      const diasNoMes = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0).getDate();
+      // Feriados nacionais fixos (mês atual)
+      const feriadosMes = [
+        '01/01','21/04','01/05','07/09','12/10','02/11','15/11','25/12'
+      ].filter(d=>{
+        const [dia,mes] = d.split('/');
+        return parseInt(mes)-1 === hoje.getMonth();
+      }).length;
+      const diasUteis = diasNoMes - feriadosMes - Math.floor(diasNoMes/7)*2;
+      const custoDia = salario > 0 ? salario / diasUteis : 0;
+      const lucro = valor > 0 ? valor - custoDia : 0;
       const enderecoFmt = [rua,num,bairro,cidade].filter(Boolean).join(', ')+(ref?` (Ref: ${ref})`:'');
 
       const novaOS = {
         id:uid(), oid:`OS-${String(400+DB.os.length+1)}`,
         cli, tipo, tec, data:dataFmt, s:'pr',
-        endereco:enderecoFmt, ref, desc, diag, soluc
+        endereco:enderecoFmt, ref, desc, diag, soluc,
+        valor, salario, lucro:Math.round(lucro)
       };
       DB.os.unshift(novaOS);
       DB.notifs.unshift({ic:'🔧',t:`Nova OS: ${tipo}`,sub:`${cli} — ${tec}`,time:nowStr(),tipo:'unread'});
