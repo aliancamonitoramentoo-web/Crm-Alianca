@@ -1632,21 +1632,26 @@ function abrirFichaOS(id){
     <!-- Lucratividade -->
     ${o.valor>0?`<div style="background:var(--s2);border-radius:10px;padding:12px">
       <div style="font-size:10px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:9px;border-bottom:1px solid var(--bd);padding-bottom:6px">💰 Lucratividade da OS</div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
         <div style="background:var(--s1);border-radius:8px;padding:10px;text-align:center">
           <div style="font-size:18px;font-weight:900;color:var(--green)">${fmtR(o.valor||0)}</div>
-          <div style="font-size:9px;color:var(--t3);text-transform:uppercase;margin-top:2px">Valor Cobrado</div>
+          <div style="font-size:9px;color:var(--t3);text-transform:uppercase;margin-top:2px">Valor Total</div>
         </div>
         <div style="background:var(--s1);border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:18px;font-weight:900;color:var(--red)">${fmtR(o.valor-(o.lucro||0))}</div>
-          <div style="font-size:9px;color:var(--t3);text-transform:uppercase;margin-top:2px">Custo Técnico/Dia</div>
+          <div style="font-size:18px;font-weight:900;color:var(--red)">${fmtR((o.valor||0)-(o.lucro||0))}</div>
+          <div style="font-size:9px;color:var(--t3);text-transform:uppercase;margin-top:2px">Custo Total</div>
         </div>
         <div style="background:var(--s1);border-radius:8px;padding:10px;text-align:center">
           <div style="font-size:18px;font-weight:900;color:${(o.lucro||0)>=0?'var(--green)':'var(--red)'}">${fmtR(o.lucro||0)}</div>
-          <div style="font-size:9px;color:var(--t3);text-transform:uppercase;margin-top:2px">Lucro Estimado</div>
+          <div style="font-size:9px;color:var(--t3);text-transform:uppercase;margin-top:2px">Lucro Líquido</div>
         </div>
       </div>
-      ${o.salario?`<div style="font-size:10px;color:var(--t3);margin-top:7px">💡 Cálculo: Salário ${fmtR(o.salario)}/mês ÷ dias úteis do mês (descontando feriados e fins de semana)</div>`:''}
+      ${(o.tecs?.length>1||o.nTecs>1)?`<div style="font-size:10px;font-weight:700;color:var(--t2);margin-bottom:6px">👷 Divisão por Técnico (${o.nTecs} técnicos)</div>
+      ${(o.tecs||[{nome:o.tec}]).map(t=>`<div style="display:flex;justify-content:space-between;align-items:center;background:var(--s1);border-radius:7px;padding:7px 10px;margin-bottom:5px;font-size:11px">
+        <span style="font-weight:700">${t.nome||t}</span>
+        <span style="color:var(--green)">Recebe: ${fmtR(o.valPorTec||0)}</span>
+        ${t.sal>0?`<span style="color:var(--red)">Custo/dia: ${fmtR(Math.round(t.sal/22))}</span>`:''}
+      </div>`).join('')}`:''}
     </div>`:''}
 
     <!-- Campos editáveis para admin -->
@@ -2410,13 +2415,16 @@ const MFRM={
     <div class="fg" style="margin-top:8px"><label>Ponto de Referência</label><input class="fc" id="os-ref" placeholder="Ex: Próximo ao Mercado Bom Preço"></div>
   </div>
   <div class="fg2">
-    <div class="fg"><label>Técnico Responsável</label><select class="fc" id="f2"></select></div>
+    <div class="fg"><label>Técnicos Responsáveis (selecione um ou mais)</label>
+      <div id="os-tecs-box" style="background:var(--s1);border:1px solid var(--bd);border-radius:9px;padding:9px;display:flex;flex-direction:column;gap:6px;max-height:150px;overflow-y:auto"></div>
+    </div>
     <div class="fg"><label>Data e Hora</label><input class="fc" id="f3" type="datetime-local"></div>
   </div>
   <div class="fg2">
-    <div class="fg"><label>💰 Valor Cobrado (R$)</label><input class="fc" id="os-val" type="number" placeholder="Ex: 350"></div>
-    <div class="fg"><label>Salário do Técnico (R$)</label><input class="fc" id="os-sal" type="number" placeholder="Ex: 1800"></div>
+    <div class="fg"><label>💰 Valor Cobrado (R$)</label><input class="fc" id="os-val" type="number" placeholder="Ex: 350" oninput="atualizarDivisaoOS()"></div>
+    <div class="fg"><label>Data e Hora</label><input class="fc" id="f3" type="datetime-local"></div>
   </div>
+  <div id="os-divisao-preview" style="display:none;background:rgba(245,166,35,.07);border:1px solid rgba(245,166,35,.2);border-radius:9px;padding:10px;margin-bottom:4px"></div>
   <div class="fg"><label>Descrição do Serviço</label><textarea class="fc" id="os-desc" rows="2" placeholder="Detalhes do que será feito..."></textarea></div>
   <div class="fg"><label>Diagnóstico</label><textarea class="fc" id="os-diag" rows="2" placeholder="Problema encontrado..."></textarea></div>
   <div class="fg"><label>Solução Aplicada</label><textarea class="fc" id="os-soluc" rows="2" placeholder="Como foi resolvido..."></textarea></div>`,
@@ -2458,6 +2466,23 @@ const M={
     if($('f2')&&['contato','agenda'].includes(type))$('f2').innerHTML=empOpts;
     if($('f1')&&type==='os')$('f1').innerHTML=empOpts;
     if($('f2')&&type==='os')$('f2').innerHTML=tecOpts;
+    // Multi-select técnicos na OS
+    if($('os-tecs-box')&&type==='os'){
+      const box=$('os-tecs-box');
+      if(!DB.tecnicos.length){
+        box.innerHTML='<div style="font-size:11px;color:var(--t3)">Nenhum técnico cadastrado. Cadastre em OS → + Adicionar.</div>';
+      } else {
+        box.innerHTML=DB.tecnicos.map((t,i)=>{
+          const nome=typeof t==='string'?t:t.nome;
+          const sal=typeof t==='object'?t.salario||0:0;
+          return `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:5px 7px;border-radius:7px;transition:background .15s" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
+            <input type="checkbox" id="tec-chk-${i}" value="${nome}" data-sal="${sal}" style="width:15px;height:15px;accent-color:var(--gold)" onchange="atualizarDivisaoOS()">
+            <span style="font-size:12.5px;font-weight:600">${nome}</span>
+            ${sal?`<span style="font-size:10px;color:var(--t3);margin-left:auto">${fmtR(sal)}/mês</span>`:''}
+          </label>`;
+        }).join('');
+      }
+    }
     if($('f0')&&type==='os'){
       const tipos=DB.adminCfg?.osTipos||['Instalação','Manutenção Preventiva','Configuração Central','Reparo','Vistoria'];
       $('f0').innerHTML=tipos.map(t=>`<option>${t}</option>`).join('');
@@ -2557,9 +2582,12 @@ const M={
       const tipo = gv('f0') || 'Instalação';
       if(!cli || cli==='Cadastre empresas primeiro'){ toast('⚠️ Selecione o cliente!'); return; }
 
-      // Técnico — pode ser string ou objeto
-      const tecRaw = gv('f2') || '';
-      const tec = tecRaw || (DB.tecnicos.length ? (typeof DB.tecnicos[0]==='string'?DB.tecnicos[0]:DB.tecnicos[0].nome) : 'A definir');
+      // Técnicos selecionados (multi-select)
+      const tecChecks=[...document.querySelectorAll('[id^="tec-chk-"]:checked')];
+      const tecs = tecChecks.length
+        ? tecChecks.map(c=>({nome:c.value, sal:parseFloat(c.dataset.sal||'0')||0}))
+        : [{nome: gv('f2')||'A definir', sal:0}];
+      const tec = tecs.map(t=>t.nome).join(', ');
 
       // Data
       const dataRaw = gv('f3');
@@ -2580,28 +2608,25 @@ const M={
       const diag  = ($('os-diag')?.value||'').trim();
       const soluc = ($('os-soluc')?.value||'').trim();
       const valor = parseFloat($('os-val')?.value||'0')||0;
-      const salario = parseFloat($('os-sal')?.value||'0')||0;
 
-      // Cálculo de lucratividade
+      // Cálculo de lucratividade com divisão igualitária
       const hoje = new Date();
       const diasNoMes = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0).getDate();
-      // Feriados nacionais fixos (mês atual)
-      const feriadosMes = [
-        '01/01','21/04','01/05','07/09','12/10','02/11','15/11','25/12'
-      ].filter(d=>{
-        const [dia,mes] = d.split('/');
-        return parseInt(mes)-1 === hoje.getMonth();
-      }).length;
+      const feriadosMes = ['01/01','21/04','01/05','07/09','12/10','02/11','15/11','25/12']
+        .filter(d=>parseInt(d.split('/')[1])-1===hoje.getMonth()).length;
       const diasUteis = diasNoMes - feriadosMes - Math.floor(diasNoMes/7)*2;
-      const custoDia = salario > 0 ? salario / diasUteis : 0;
-      const lucro = valor > 0 ? valor - custoDia : 0;
+      const nTecs = tecs.length || 1;
+      const valPorTec = valor > 0 ? valor / nTecs : 0;
+      const custTotal = tecs.reduce((a,t)=>a+(t.sal>0?t.sal/diasUteis:0), 0);
+      const lucro = valor > 0 ? valor - custTotal : 0;
+      const salario = tecs.reduce((a,t)=>a+t.sal, 0);
       const enderecoFmt = [rua,num,bairro,cidade].filter(Boolean).join(', ')+(ref?` (Ref: ${ref})`:'');
 
       const novaOS = {
         id:uid(), oid:`OS-${String(400+DB.os.length+1)}`,
-        cli, tipo, tec, data:dataFmt, s:'pr',
+        cli, tipo, tec, tecs, data:dataFmt, s:'pr',
         endereco:enderecoFmt, ref, desc, diag, soluc,
-        valor, salario, lucro:Math.round(lucro)
+        valor, salario, lucro:Math.round(lucro), nTecs, valPorTec:Math.round(valPorTec)
       };
       DB.os.unshift(novaOS);
       DB.notifs.unshift({ic:'🔧',t:`Nova OS: ${tipo}`,sub:`${cli} — ${tec}`,time:nowStr(),tipo:'unread'});
@@ -3012,6 +3037,39 @@ function campoFicha(label, valor, editavel, onchange, tipo, style){
 
 
 // ── Abre modal rápido de venda para cliente já existente ──
+function atualizarDivisaoOS(){
+  // Mostra divisão igualitária em tempo real
+  const checks=[...document.querySelectorAll('[id^="tec-chk-"]:checked')];
+  const preview=$('os-divisao-preview');
+  if(!preview) return;
+  if(!checks.length){ preview.style.display='none'; return; }
+
+  const val=parseFloat($('os-val')?.value||'0')||0;
+  const hoje=new Date();
+  const diasNoMes=new Date(hoje.getFullYear(),hoje.getMonth()+1,0).getDate();
+  const feriados=['01/01','21/04','01/05','07/09','12/10','02/11','15/11','25/12']
+    .filter(d=>parseInt(d.split('/')[1])-1===hoje.getMonth()).length;
+  const diasUteis=diasNoMes - feriados - Math.floor(diasNoMes/7)*2;
+
+  const nTecs=checks.length;
+  const valPorTec=val>0?val/nTecs:0;
+
+  preview.style.display='block';
+  preview.innerHTML=`<div style="font-size:10px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.8px;margin-bottom:7px">💰 Divisão Igualitária — ${nTecs} técnico${nTecs>1?'s':''}</div>`
+    +checks.map(chk=>{
+      const nome=chk.value;
+      const sal=parseFloat(chk.dataset.sal||'0')||0;
+      const custoDia=sal>0?sal/diasUteis:0;
+      const lucro=valPorTec-custoDia;
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(28,48,80,.3);font-size:11px">
+        <span style="font-weight:700">${nome}</span>
+        <span style="color:var(--green)">Recebe: ${val>0?fmtR(valPorTec):'—'}</span>
+        <span style="color:var(--red)">Custo/dia: ${sal>0?fmtR(Math.round(custoDia)):'—'}</span>
+        <span style="color:${lucro>=0?'var(--green)':'var(--red)'};font-weight:800">Lucro: ${val>0&&sal>0?fmtR(Math.round(lucro)):'—'}</span>
+      </div>`;
+    }).join('');
+}
+
 function abrirNovaVendaModal(){
   $('mod-title').textContent='🔥 Nova Venda no Pipeline';
   const empOpts=DB.empresas.length
