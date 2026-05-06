@@ -1537,6 +1537,8 @@ function preencherEnderecoOS(nomeCliente){
   if(ba) ba.value=e.bairro||'';
   if(ci) ci.value=e.cidade||'';
   if(re) re.value=e.ref||'';
+  // Auto-preenche tipo de OS e materiais baseado na venda do cliente
+  setTimeout(()=>preencherOSdaVenda(nomeCliente), 150);
 }
 
 function rOS(){
@@ -1627,6 +1629,21 @@ function abrirFichaOS(id){
     ${o.soluc?`<div style="background:var(--s2);border-radius:10px;padding:12px">
       <div style="font-size:10px;font-weight:800;color:var(--green);text-transform:uppercase;letter-spacing:1px;margin-bottom:7px">✅ Solução Aplicada</div>
       <div style="font-size:12px;line-height:1.6;color:var(--t2)">${o.soluc}</div>
+    </div>`:''}
+
+    <!-- Materiais -->
+    ${o.materiais?.length?`<div style="background:var(--s2);border-radius:10px;padding:12px">
+      <div style="font-size:10px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:9px;border-bottom:1px solid var(--bd);padding-bottom:6px">🔩 Materiais / Equipamentos Utilizados</div>
+      <div style="display:grid;grid-template-columns:1fr auto auto;gap:6px;font-size:11px;align-items:center">
+        <div style="font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.7px">Material</div>
+        <div style="font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.7px;text-align:center">Qtd</div>
+        <div style="font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.7px;text-align:center">Un</div>
+        ${o.materiais.map(m=>`
+          <div style="padding:5px 0;border-bottom:1px solid rgba(28,48,80,.3)">${m.nome}</div>
+          <div style="text-align:center;font-weight:800;color:var(--gold);border-bottom:1px solid rgba(28,48,80,.3)">${m.qtd}</div>
+          <div style="text-align:center;color:var(--t3);border-bottom:1px solid rgba(28,48,80,.3)">${m.unid}</div>
+        `).join('')}
+      </div>
     </div>`:''}
 
     <!-- Lucratividade -->
@@ -1739,6 +1756,28 @@ function gerarPDFOS(id){
       const h5=campo('Endereço de Atendimento',o.endereco+(o.ref?' (Ref: '+o.ref+')':''),M,PW-2*M);
       y+=h5+8;
     } else { y+=5; }
+
+    // ── Materiais ──
+    if(o.materiais?.length){
+      secao('MATERIAIS / EQUIPAMENTOS UTILIZADOS');
+      // Header tabela
+      doc.setFillColor(19,29,47); doc.rect(M,y,PW-2*M,7,'F');
+      doc.setTextColor(245,166,35); doc.setFontSize(8); doc.setFont('helvetica','bold');
+      doc.text('MATERIAL',M+3,y+5); doc.text('QTD',M+130,y+5); doc.text('UN',M+155,y+5);
+      y+=10;
+      o.materiais.forEach((m,i)=>{
+        doc.setFillColor(i%2===0?18:15, i%2===0?30:25, i%2===0?50:42);
+        doc.rect(M,y-5,PW-2*M,8,'F');
+        doc.setTextColor(220,235,255); doc.setFontSize(9); doc.setFont('helvetica','normal');
+        doc.text(m.nome.substring(0,50),M+3,y);
+        doc.setFont('helvetica','bold'); doc.setTextColor(245,166,35);
+        doc.text(String(m.qtd),M+132,y);
+        doc.setTextColor(150,170,200); doc.setFont('helvetica','normal');
+        doc.text(m.unid||'un',M+157,y);
+        y+=10;
+      });
+      y+=5;
+    }
 
     // ── Descrição ──
     if(o.desc){
@@ -2412,20 +2451,26 @@ const MFRM={
       <div class="fg" style="margin:0"><label>Bairro</label><input class="fc" id="os-bairro" placeholder="—"></div>
       <div class="fg" style="margin:0"><label>Cidade</label><input class="fc" id="os-cidade" placeholder="—"></div>
     </div>
-    <div class="fg" style="margin-top:8px"><label>Ponto de Referência</label><input class="fc" id="os-ref" placeholder="Ex: Próximo ao Mercado Bom Preço"></div>
+    <div class="fg" style="margin-top:8px"><label>Ponto de Referência</label><input class="fc" id="os-ref" placeholder="Ex: Próximo ao Mercado"></div>
   </div>
   <div class="fg2">
-    <div class="fg"><label>Técnicos Responsáveis (selecione um ou mais)</label>
-      <div id="os-tecs-box" style="background:var(--s1);border:1px solid var(--bd);border-radius:9px;padding:9px;display:flex;flex-direction:column;gap:6px;max-height:150px;overflow-y:auto"></div>
+    <div class="fg"><label>Técnicos Responsáveis</label>
+      <div id="os-tecs-box" style="background:var(--s1);border:1px solid var(--bd);border-radius:9px;padding:9px;display:flex;flex-direction:column;gap:6px;max-height:130px;overflow-y:auto"></div>
     </div>
     <div class="fg"><label>Data e Hora</label><input class="fc" id="f3" type="datetime-local"></div>
   </div>
-  <div class="fg2">
-    <div class="fg"><label>💰 Valor Cobrado (R$)</label><input class="fc" id="os-val" type="number" placeholder="Ex: 350" oninput="atualizarDivisaoOS()"></div>
-    <div class="fg"><label>Data e Hora</label><input class="fc" id="f3" type="datetime-local"></div>
+  <div class="fg">
+    <label>💰 Valor Cobrado (R$)</label>
+    <input class="fc" id="os-val" type="number" placeholder="Ex: 350" oninput="atualizarDivisaoOS()">
   </div>
   <div id="os-divisao-preview" style="display:none;background:rgba(245,166,35,.07);border:1px solid rgba(245,166,35,.2);border-radius:9px;padding:10px;margin-bottom:4px"></div>
-  <div class="fg"><label>Descrição do Serviço</label><textarea class="fc" id="os-desc" rows="2" placeholder="Detalhes do que será feito..."></textarea></div>
+
+  <!-- Materiais utilizados -->
+  <div style="font-size:11px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin:4px 0 8px">🔩 Materiais / Equipamentos Utilizados</div>
+  <div id="os-materiais-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
+  <button type="button" class="btn bgh sm" onclick="adicionarMaterialOS()">+ Adicionar Material</button>
+
+  <div class="fg" style="margin-top:8px"><label>Descrição do Serviço</label><textarea class="fc" id="os-desc" rows="2" placeholder="Detalhes do que será feito..."></textarea></div>
   <div class="fg"><label>Diagnóstico</label><textarea class="fc" id="os-diag" rows="2" placeholder="Problema encontrado..."></textarea></div>
   <div class="fg"><label>Solução Aplicada</label><textarea class="fc" id="os-soluc" rows="2" placeholder="Como foi resolvido..."></textarea></div>`,
 
@@ -2607,6 +2652,7 @@ const M={
       const desc  = ($('os-desc')?.value||'').trim();
       const diag  = ($('os-diag')?.value||'').trim();
       const soluc = ($('os-soluc')?.value||'').trim();
+      const materiais = coletarMateriaisOS();
       const valor = parseFloat($('os-val')?.value||'0')||0;
 
       // Cálculo de lucratividade com divisão igualitária
@@ -2625,7 +2671,7 @@ const M={
       const novaOS = {
         id:uid(), oid:`OS-${String(400+DB.os.length+1)}`,
         cli, tipo, tec, tecs, data:dataFmt, s:'pr',
-        endereco:enderecoFmt, ref, desc, diag, soluc,
+        endereco:enderecoFmt, ref, desc, diag, soluc, materiais,
         valor, salario, lucro:Math.round(lucro), nTecs, valPorTec:Math.round(valPorTec)
       };
       DB.os.unshift(novaOS);
@@ -3037,6 +3083,102 @@ function campoFicha(label, valor, editavel, onchange, tipo, style){
 
 
 // ── Abre modal rápido de venda para cliente já existente ──
+// ── Materiais da OS ───────────────────────────────
+// Materiais pré-cadastrados comuns
+const MATERIAIS_COMUNS = [
+  'Câmera HD 2MP','Câmera Full HD 4MP','Câmera 360°','DVR 4 canais','DVR 8 canais',
+  'NVR 4 canais','NVR 8 canais','Cabo coaxial (m)','Cabo UTP Cat5 (m)',
+  'Fonte 12V 2A','Fonte 12V 5A','Conector BNC','Conector RJ45',
+  'Suporte câmera','HD 1TB','HD 2TB','Switch 8 portas',
+  'Central de alarme','Sensor de movimento','Sensor magnético','Sirene',
+  'Cabo elétrico 2x1.5 (m)','Eletroduto (m)','Abraçadeira','Bucha e parafuso'
+];
+
+function adicionarMaterialOS(nome='', qtd=1, unid='un'){
+  const lista=$('os-materiais-list'); if(!lista) return;
+  const id='mat-'+Date.now()+Math.random().toString(36).slice(2,6);
+  const div=document.createElement('div');
+  div.id=id;
+  div.style.cssText='display:flex;gap:6px;align-items:center';
+  div.innerHTML=`
+    <input class="fc" list="mat-sugestoes" placeholder="Material/Equipamento" value="${nome}"
+      style="flex:2;padding:6px 9px;font-size:12px" data-field="nome">
+    <input class="fc" type="number" placeholder="Qtd" value="${qtd}" min="1"
+      style="width:65px;padding:6px 9px;font-size:12px;text-align:center" data-field="qtd">
+    <select class="fc" style="width:70px;padding:6px 4px;font-size:11px" data-field="unid">
+      ${['un','m','cm','kg','g','cj','par','cx'].map(u=>`<option${u===unid?' selected':''}>${u}</option>`).join('')}
+    </select>
+    <button type="button" class="btn br sm" onclick="document.getElementById('${id}').remove()" style="padding:6px 9px;flex-shrink:0">✕</button>`;
+  lista.appendChild(div);
+
+  // Adiciona datalist se não existe
+  if(!document.getElementById('mat-sugestoes')){
+    const dl=document.createElement('datalist');
+    dl.id='mat-sugestoes';
+    dl.innerHTML=MATERIAIS_COMUNS.map(m=>`<option value="${m}">`).join('');
+    document.body.appendChild(dl);
+  }
+}
+
+function coletarMateriaisOS(){
+  const lista=$('os-materiais-list'); if(!lista) return [];
+  return [...lista.children].map(div=>({
+    nome: div.querySelector('[data-field="nome"]')?.value.trim()||'',
+    qtd:  parseInt(div.querySelector('[data-field="qtd"]')?.value)||1,
+    unid: div.querySelector('[data-field="unid"]')?.value||'un',
+  })).filter(m=>m.nome);
+}
+
+// ── Auto-preenche OS a partir da venda do cliente ─
+function preencherOSdaVenda(cliNome){
+  if(!cliNome) return;
+  // Busca última venda do cliente
+  const deal=DB.deals.filter(d=>d.emp===cliNome).slice(-1)[0];
+  if(!deal) return;
+
+  // Mapeia tag da venda para tipo de OS
+  const tagParaTipo={
+    mo:'Instalação Monitoramento',
+    ca:'Instalação de Câmeras',
+    al:'Instalação de Alarme',
+    co:'Instalação Controle de Acesso',
+    ra:'Instalação Rastreamento',
+  };
+
+  // Preenche tipo de serviço
+  const tipoSel=$('f0');
+  if(tipoSel){
+    const tipoAuto=tagParaTipo[deal.tag]||deal.tag||'';
+    // Tenta encontrar opção correspondente
+    const opcao=[...tipoSel.options].find(o=>
+      o.value.toLowerCase().includes(deal.tag)||
+      o.text.toLowerCase().includes(deal.tag)||
+      o.text===tipoAuto
+    );
+    if(opcao) tipoSel.value=opcao.value;
+    // Preenche valor se OS não tiver
+    const valEl=$('os-val');
+    if(valEl&&!valEl.value&&deal.val&&parseInt(deal.val)>0){
+      valEl.value=deal.val;
+    }
+  }
+
+  // Adiciona materiais padrão baseado no serviço
+  const matsPadrao={
+    ca:['Câmera HD 2MP','Cabo coaxial (m)','Fonte 12V 2A','Conector BNC'],
+    al:['Central de alarme','Sensor de movimento','Sensor magnético','Sirene'],
+    mo:['DVR 4 canais','HD 1TB'],
+    co:['Central de alarme','Sensor magnético'],
+    ra:[],
+  };
+  const lista=$('os-materiais-list');
+  if(lista&&!lista.children.length){
+    (matsPadrao[deal.tag]||[]).forEach(m=>adicionarMaterialOS(m,1,'un'));
+  }
+
+  toast(`💡 OS pré-preenchida com base na venda: ${TAGL[deal.tag]||deal.tag}`);
+}
+
 function atualizarDivisaoOS(){
   // Mostra divisão igualitária em tempo real
   const checks=[...document.querySelectorAll('[id^="tec-chk-"]:checked')];
