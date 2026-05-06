@@ -2294,7 +2294,7 @@ const MFRM={
 
   os:`<div class="fg2">
     <div class="fg"><label>Tipo de Serviço *</label>
-      <select class="fc" id="f0"><option>Instalação</option><option>Manutenção Preventiva</option><option>Configuração Central</option><option>Reparo</option><option>Vistoria</option></select>
+      <select class="fc" id="f0" id="os-tipo-sel"></select>
     </div>
     <div class="fg"><label>Cliente *</label>
       <select class="fc" id="f1" onchange="preencherEnderecoOS(this.value)"></select>
@@ -2357,6 +2357,10 @@ const M={
     if($('f2')&&['contato','agenda'].includes(type))$('f2').innerHTML=empOpts;
     if($('f1')&&type==='os')$('f1').innerHTML=empOpts;
     if($('f2')&&type==='os')$('f2').innerHTML=tecOpts;
+    if($('f0')&&type==='os'){
+      const tipos=DB.adminCfg?.osTipos||['Instalação','Manutenção Preventiva','Configuração Central','Reparo','Vistoria'];
+      $('f0').innerHTML=tipos.map(t=>`<option>${t}</option>`).join('');
+    }
     if($('f0')&&type==='contrato')$('f0').innerHTML=empOpts;
     if($('f3')&&type==='agenda')$('f3').innerHTML=empOpts;
     // Serviços dinâmicos — lê de DB.adminCfg
@@ -2448,24 +2452,45 @@ const M={
       rContatos();
 
     }else if(_mtype==='os'){
-      const cli=gv('f1');if(!cli||cli==='Cadastre empresas primeiro'){toast('⚠️ Selecione o cliente!');return;}
-      const tipo=gv('f0'),tec=gv('f2')||DB.tecnicos[0]||'—',dataRaw=gv('f3');
-      const dataFmt=dataRaw?new Date(dataRaw).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'A definir';
-      // Endereço da OS
-      const rua=($('os-rua')?.value||'').trim();
-      const num=($('os-num')?.value||'').trim();
-      const bairro=($('os-bairro')?.value||'').trim();
-      const cidade=($('os-cidade')?.value||'').trim();
-      const ref=($('os-ref')?.value||'').trim();
-      const desc=($('os-desc')?.value||'').trim();
-      const diag=($('os-diag')?.value||'').trim();
-      const soluc=($('os-soluc')?.value||'').trim();
-      const enderecoFmt=[rua,num,bairro,cidade].filter(Boolean).join(', ')+(ref?` (Ref: ${ref})`:'');
-      const oid=uid();
-      DB.os.unshift({id:oid,oid:`OS-${400+DB.os.length+1}`,cli,tipo,tec,data:dataFmt,s:'pr',endereco:enderecoFmt,ref,desc,diag,soluc});
+      const cli  = gv('f1');
+      const tipo = gv('f0') || 'Instalação';
+      if(!cli || cli==='Cadastre empresas primeiro'){ toast('⚠️ Selecione o cliente!'); return; }
+
+      // Técnico — pode ser string ou objeto
+      const tecRaw = gv('f2') || '';
+      const tec = tecRaw || (DB.tecnicos.length ? (typeof DB.tecnicos[0]==='string'?DB.tecnicos[0]:DB.tecnicos[0].nome) : 'A definir');
+
+      // Data
+      const dataRaw = gv('f3');
+      const dataFmt = dataRaw ? new Date(dataRaw).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : 'A definir';
+
+      // Endereço — tenta preencher do cliente se campos vazios
+      let rua    = ($('os-rua')?.value||'').trim();
+      let num    = ($('os-num')?.value||'').trim();
+      let bairro = ($('os-bairro')?.value||'').trim();
+      let cidade = ($('os-cidade')?.value||'').trim();
+      const ref  = ($('os-ref')?.value||'').trim();
+      // Se endereço vazio, pega do cadastro do cliente
+      if(!rua && !bairro){
+        const empData = DB.empresas.find(e=>e.nome===cli);
+        if(empData){ rua=empData.rua||''; num=empData.num||''; bairro=empData.bairro||''; cidade=empData.cidade||''; }
+      }
+      const desc  = ($('os-desc')?.value||'').trim();
+      const diag  = ($('os-diag')?.value||'').trim();
+      const soluc = ($('os-soluc')?.value||'').trim();
+      const enderecoFmt = [rua,num,bairro,cidade].filter(Boolean).join(', ')+(ref?` (Ref: ${ref})`:'');
+
+      const novaOS = {
+        id:uid(), oid:`OS-${String(400+DB.os.length+1)}`,
+        cli, tipo, tec, data:dataFmt, s:'pr',
+        endereco:enderecoFmt, ref, desc, diag, soluc
+      };
+      DB.os.unshift(novaOS);
       DB.notifs.unshift({ic:'🔧',t:`Nova OS: ${tipo}`,sub:`${cli} — ${tec}`,time:nowStr(),tipo:'unread'});
-      addFeed('🔧','rgba(255,140,66,.12)',`OS: ${tipo} — ${cli}`);
-      rOS();rNotifs();
+      addFeed('🔧','rgba(255,140,66,.12)',`OS criada: ${tipo} — ${cli}`);
+      adicionarEvento(cli,'os',`OS criada: ${novaOS.oid} — ${tipo}`,'🔧');
+      rOS(); rNotifs(); updKPI(); autoSave();
+      toast(`✅ OS ${novaOS.oid} criada com sucesso!`);
 
     }else if(_mtype==='contrato'){
       const cli=gv('f0');if(!cli||cli==='Cadastre empresas primeiro'){toast('⚠️ Selecione o cliente!');return;}
