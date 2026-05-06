@@ -431,7 +431,9 @@ tr:hover td{background:rgba(255,255,255,.017);}
     <div class="fb" onclick="fpipe(this,'co')">🚪 Acesso</div>
     <div class="fb" onclick="fpipe(this,'ca')">🎥 CFTV</div>
     <div class="fb" onclick="fpipe(this,'ra')">📡 Rastreamento</div>
-    <div style="margin-left:auto"></div>
+    <div style="margin-left:auto">
+      <button class="btn bg sm adm" onclick="abrirNovaVendaModal()">🔥 + Nova Venda</button>
+    </div>
   </div>
   <div class="card"><div class="pipe" id="pipe-board"></div></div>
   <div class="g4" id="pipe-kpis" style="margin-top:2px"></div>
@@ -2866,7 +2868,46 @@ function campoFicha(label, valor, editavel, onchange, tipo, style){
 
 
 // ── Abre modal rápido de venda para cliente já existente ──
+function abrirNovaVendaModal(){
+  $('mod-title').textContent='🔥 Nova Venda no Pipeline';
+  const empOpts=DB.empresas.length
+    ?DB.empresas.map(e=>`<option value="${e.nome}">${e.nome}</option>`).join('')
+    :'<option value="">Cadastre clientes primeiro</option>';
+  $('mod-body').innerHTML=`
+    <div class="fg"><label>Cliente *</label>
+      <select class="fc" id="nv-cli"><option value="">— Selecione o cliente —</option>${empOpts}</select>
+    </div>
+    <div class="fg"><label>Serviço de Interesse</label>
+      <select class="fc" id="nv-tag">${optsServicos()}</select>
+    </div>
+    <div class="fg2">
+      <div class="fg"><label>Valor Estimado (R$)</label>
+        <input class="fc" id="nv-val" type="number" placeholder="Ex: 2500"></div>
+      <div class="fg"><label>Estágio</label>
+        <select class="fc" id="nv-stage">
+          ${DB.stages.map((s,i)=>`<option value="${i}">${s.n}</option>`).join('')}
+        </select>
+      </div>
+    </div>`;
+  $('mod-save-btn').onclick=()=>{
+    const cli=$('nv-cli')?.value;
+    if(!cli){ toast('⚠️ Selecione um cliente!'); return; }
+    const tag=$('nv-tag')?.value||'mo';
+    const val=String(parseInt($('nv-val')?.value||'0')||0);
+    const stage=parseInt($('nv-stage')?.value||'0');
+    const emp=DB.empresas.find(e=>e.nome===cli);
+    DB.deals.push({id:uid(),emp:cli,val,tag,stage,ini:(CU?.nome||'GA').substring(0,2).toUpperCase(),cor:emp?.cor||avc(DB.deals.length)});
+    DB.notifs.unshift({ic:'🔥',t:`Nova venda: ${cli}`,sub:`${TAGL[tag]||tag} — ${val>0?fmtR(parseInt(val)):'a definir'}`,time:nowStr(),tipo:'unread'});
+    addFeed('🔥','rgba(245,166,35,.12)',`Nova venda: ${cli} — ${TAGL[tag]||tag}`);
+    rPipeline(); rNotifs(); updKPI(); autoSave();
+    M.close(); $('mod-save-btn').onclick=()=>M.save();
+    toast('✅ Venda adicionada ao Pipeline!');
+  };
+  $('MOD').classList.add('open');
+}
+
 function abrirVenda(empNome){
+  if(!empNome){ toast('⚠️ Selecione um cliente primeiro!'); return; }
   $('mod-title').textContent=`🔥 Nova Venda — ${empNome}`;
   $('mod-body').innerHTML=`
     <div style="font-size:12px;color:var(--t2);margin-bottom:12px">Adicionar oportunidade de venda para <strong style="color:var(--t1)">${empNome}</strong> no Pipeline.</div>
@@ -2874,22 +2915,24 @@ function abrirVenda(empNome){
       <select class="fc" id="vr-tag">${optsServicos()}</select>
     </div>
     <div class="fg2">
-      <div class="fg"><label>Valor Estimado (R$)</label><input class="fc" id="vr-val" placeholder="Ex: 2500"></div>
+      <div class="fg"><label>Valor Estimado (R$)</label><input class="fc" id="vr-val" placeholder="Ex: 2500" type="number"></div>
       <div class="fg"><label>Estágio</label>
         <select class="fc" id="vr-stage">
-          <option value="0">📋 Prospecção</option><option value="1">🏠 Visita Técnica</option>
-          <option value="2">📄 Proposta</option><option value="3">🤝 Negociação</option>
+          ${DB.stages.map((s,i)=>`<option value="${i}">${s.n}</option>`).join('')}
         </select>
       </div>
     </div>`;
   $('mod-save-btn').onclick=()=>{
-    const tag=$('vr-tag')?.value||'mo';
-    const val=parseInt(($('vr-val')?.value||'').replace(/\D/g,''))||0;
-    const stage=parseInt($('vr-stage')?.value||'0');
-    DB.deals.push({id:uid(),emp:empNome,val:String(val),tag,stage,ini:CU.nome.substring(0,2).toUpperCase(),cor});
-    DB.notifs.unshift({ic:'🔥',t:`Venda: ${empNome}`,sub:`${TAGL[tag]} — ${val?fmtR(val):'a definir'}`,time:nowStr(),tipo:'unread'});
-    addFeed('🔥','rgba(245,166,35,.12)',`Lead: ${empNome} — ${TAGL[tag]}`);
-    rClientes();rPipeline();rNotifs();updKPI();
+    const tag   = $('vr-tag')?.value  || 'mo';
+    const val   = String(parseInt(($('vr-val')?.value||'0').replace(/\D/g,''))||0);
+    const stage = parseInt($('vr-stage')?.value||'0');
+    const emp   = DB.empresas.find(e=>e.nome===empNome);
+    const corDeal = emp?.cor || avc(DB.deals.length);
+    const ini   = (CU?.nome||'GA').substring(0,2).toUpperCase();
+    DB.deals.push({id:uid(), emp:empNome, val, tag, stage, ini, cor:corDeal});
+    DB.notifs.unshift({ic:'🔥',t:`Nova venda: ${empNome}`,sub:`${TAGL[tag]||tag} — ${val>0?fmtR(parseInt(val)):'valor a definir'}`,time:nowStr(),tipo:'unread'});
+    addFeed('🔥','rgba(245,166,35,.12)',`Lead adicionado: ${empNome} — ${TAGL[tag]||tag}`);
+    rClientes(); rPipeline(); rNotifs(); updKPI(); autoSave();
     M.close(); $('mod-save-btn').onclick=()=>M.save();
     toast(`✅ Venda adicionada ao Pipeline!`);
   };
