@@ -2557,6 +2557,7 @@ const M={
       const doc=($('cli-doc')?.value||'').trim();
       const cargo=($('cli-cargo')?.value||'').trim();
       const tel=($('cli-tel')?.value||'').trim();
+      const tel2=($('cli-tel2')?.value||'').trim();
       const email=($('cli-email')?.value||'').trim();
       const bairro=($('cli-bairro')?.value||'').trim();
       const cidade=($('cli-cidade')?.value||'').trim();
@@ -2567,10 +2568,17 @@ const M={
       const obs=($('cli-obs')?.value||'').trim();
       const temVenda=$('cli-tem-venda')?.checked||false;
 
-      // Cria empresa (para PJ) ou contato direto (PF)
+      // Cor aleatória para o cliente
+      const corCli=avc(DB.empresas.length);
+
+      // Verifica se já existe
+      if(DB.empresas.find(e=>e.nome.toLowerCase()===nome.toLowerCase())){
+        toast('⚠️ Já existe um cliente com esse nome!'); return;
+      }
+
       const eid=uid();
-      DB.empresas.push({id:eid,nome,contato:cargo,tel,email,bairro,cidade,rua,num,ref,s:'pr',val:0,cor,tag:'mo',tipo,doc,nasc,obs});
-      DB.contatos.push({id:uid(),tipo,nome,doc,cargo,tel,email,bairro,cidade,rua,num,ref,nasc,obs,emp:tipo==='pj'?nome:'',s:'pr'});
+      DB.empresas.push({id:eid,nome,contato:cargo,tel,tel2,email,bairro,cidade,rua,num,ref,s:'pr',val:0,cor:corCli,tag:'mo',tipo,doc,nasc,obs});
+      DB.contatos.push({id:uid(),tipo,nome,doc,cargo,tel,tel2,email,bairro,cidade,rua,num,ref,nasc,obs,emp:tipo==='pj'?nome:'',s:'pr'});
 
       // Adiciona venda se marcou
       if(temVenda){
@@ -2578,37 +2586,40 @@ const M={
         const valRaw=($('cli-val')?.value||'').replace(/\D/g,'');
         const val=parseInt(valRaw)||0;
         const stage=parseInt($('cli-stage')?.value||'0');
-        const ini=CU.nome.substring(0,2).toUpperCase();
-        DB.deals.push({id:uid(),emp:nome,val:String(val),tag,stage,ini,cor});
-        DB.notifs.unshift({ic:'🔥',t:`Novo lead: ${nome}`,sub:`${TAGL[tag]} — ${val?fmtR(val)+'/mês':'valor a definir'}`,time:nowStr(),tipo:'unread'});
-        addFeed('🔥','rgba(245,166,35,.12)',`Lead criado: ${nome} — ${TAGL[tag]}`);
+        const ini=(CU?.nome||'GA').substring(0,2).toUpperCase();
+        DB.deals.push({id:uid(),emp:nome,val:String(val),tag,stage,ini,cor:corCli});
+        DB.notifs.unshift({ic:'🔥',t:`Novo lead: ${nome}`,sub:`${TAGL[tag]||tag} — ${val?fmtR(val):'valor a definir'}`,time:nowStr(),tipo:'unread'});
+        addFeed('🔥','rgba(245,166,35,.12)',`Lead criado: ${nome} — ${TAGL[tag]||tag}`);
       } else {
         addFeed('👥','rgba(176,143,255,.12)',`Cliente cadastrado: ${nome} (${tipo.toUpperCase()})`);
       }
 
       DB.notifs.unshift({ic:'👥',t:`Novo cliente: ${nome}`,sub:`${tipo==='pf'?'Pessoa Física':'Pessoa Jurídica'}${temVenda?' · Com venda':''}`,time:nowStr(),tipo:'unread'});
-      rClientes();rPipeline();rMapa();rNotifs();updKPI();
-      M.close();toast(`✅ ${nome} cadastrado!${temVenda?' Venda adicionada ao Pipeline!':''}`);return;
+      adicionarEvento(nome,'geral',`Cliente cadastrado: ${tipo==='pf'?'Pessoa Física':'Pessoa Jurídica'}`,'👥');
+      rClientes();rPipeline();rMapa();rNotifs();updKPI();autoSave();
+      M.close();toast(`✅ ${nome} cadastrado com sucesso!${temVenda?' Venda no Pipeline!':''}`);return;
 
     }else if(_mtype==='lead'){
-      const nome=gv('f0');if(!nome){toast('⚠️ Informe o nome da empresa!');return;}
+      const nome=gv('f0');if(!nome){toast('⚠️ Informe o nome!');return;}
       const cont=gv('f2'),tel=gv('f3'),email=gv('f4'),bairro=gv('f5');
-      const tag=gv('f6')||'mo',valRaw=gv('f7'),stage=parseInt(gv('f8')||'0');
-      const val=parseInt(valRaw.replace(/\D/g,''))||0;
-      const ini=CU.nome.substring(0,2).toUpperCase();
+      const tag=gv('f6')||'mo',valRaw=gv('f7')||'0',stage=parseInt(gv('f8')||'0');
+      const val=parseInt((valRaw||'').replace(/\D/g,''))||0;
+      const ini=(CU?.nome||'GA').substring(0,2).toUpperCase();
+      const corL=avc(DB.empresas.length);
       const eid=uid();
-      DB.empresas.push({id:eid,nome,contato:cont,tel,email,bairro,s:'pr',val,cor,tag});
-      DB.deals.push({id:uid(),emp:nome,val:String(val),tag,stage,ini,cor});
+      DB.empresas.push({id:eid,nome,contato:cont,tel,email,bairro,s:'pr',val,cor:corL,tag});
+      DB.deals.push({id:uid(),emp:nome,val:String(val),tag,stage,ini,cor:corL});
       if(cont)DB.contatos.push({id:uid(),nome:cont,emp:nome,cargo:'Responsável',tel,email,s:'pr'});
-      DB.notifs.unshift({ic:'📋',t:`Novo lead: ${nome}`,sub:`${TAGL[tag]} — ${val?fmtR(val)+'/mês':'—'}`,time:nowStr(),tipo:'unread'});
+      DB.notifs.unshift({ic:'📋',t:`Novo lead: ${nome}`,sub:`${TAGL[tag]||tag} — ${val?fmtR(val):'—'}`,time:nowStr(),tipo:'unread'});
       addFeed('📋','rgba(245,166,35,.12)',`Lead: ${nome}`);
-      rEmpresas();rContatos();rPipeline();rTopCli();rMapa();rNotifs();
+      rEmpresas();rContatos();rPipeline();rTopCli();rMapa();rNotifs();autoSave();
 
     }else if(_mtype==='empresa'){
       const nome=gv('f0');if(!nome){toast('⚠️ Informe o nome!');return;}
-      DB.empresas.push({id:uid(),nome,contato:gv('f1'),tel:gv('f2'),email:gv('f3'),bairro:gv('f4'),s:'at',val:0,cor,tag:'mo'});
+      const corE=avc(DB.empresas.length);
+      DB.empresas.push({id:uid(),nome,contato:gv('f1'),tel:gv('f2'),email:gv('f3'),bairro:gv('f4'),s:'at',val:0,cor:corE,tag:'mo'});
       addFeed('🏢','rgba(245,166,35,.12)',`Empresa: ${nome}`);
-      rEmpresas();rMapa();
+      rEmpresas();rMapa();autoSave();
 
     }else if(_mtype==='contato'){
       const nome=gv('f0');if(!nome){toast('⚠️ Informe o nome!');return;}
@@ -2620,7 +2631,7 @@ const M={
       const emp=tipo==='pj'?gv('f2'):'';
       DB.contatos.push({id:uid(),tipo,nome,doc,cargo,emp,tel,tel2,email,bairro,nasc,obs,s:'at'});
       addFeed('👤','rgba(176,143,255,.12)',`${tipo==='pf'?'PF':'PJ'}: ${nome}`);
-      rContatos();
+      rContatos();autoSave();
 
     }else if(_mtype==='os'){
       const cli  = gv('f1');
