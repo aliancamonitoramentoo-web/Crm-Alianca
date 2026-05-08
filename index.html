@@ -1016,8 +1016,10 @@ const DB={
 };
 
 // ── ESTADO ───────────────────────────────
-let CU=null, _seq=1000, _pf=null, _mtype='';
-const uid=()=>++_seq;
+let CU=null, _pf=null, _mtype='';
+// uid baseado em timestamp — nunca repete mesmo após recarregar
+let _uidBase = Date.now();
+const uid=()=>{ _uidBase++; return _uidBase; };
 const $=id=>document.getElementById(id);
 const set=(id,v)=>{const e=$(id);if(e)e.textContent=v;};
 const isAdmin=()=>!!(CU&&CU.perfil==='admin');
@@ -1315,38 +1317,50 @@ const STAGE_NAMES=['Prospecção','Visita Técnica','Proposta','Negociação','�
 const STAGE_COLS =['#f5a623','#b08fff','#ff8c42','#ff4560','#00d97e'];
 
 function advDeal(id,dir){
-  const d=DB.deals.find(x=>x.id===id);if(!d)return;
+  const d=DB.deals.find(x=>x.id===id); if(!d) return;
   const ns=d.stage+dir;
-  if(ns<0||ns>=DB.stages.length)return;
+  if(ns<0||ns>=DB.stages.length) return;
   d.stage=ns;
 
-  if(ns===4){
-    // ── SUCESSO: lança automaticamente no Fluxo de Caixa ──
+  if(ns===DB.stages.length-1){
+    // ── SUCESSO ──────────────────────────────────
     const valNum=parseR(d.val);
-    DB.movs.unshift({
-      id:uid(),
-      tipo:'in',
-      val:String(valNum),
-      desc:`🏆 Venda — ${d.emp}`,
-      ref:`Pipeline · ${TAGL[d.tag]||d.tag} · ${nowStr()}`
-    });
-    DB.notifs.unshift({ic:'🏆',t:`Venda concluída: ${d.emp}`,sub:`${fmtR(valNum)} lançado no Fluxo de Caixa automaticamente!`,time:nowStr(),tipo:'success'});
-    addFeed('🏆','rgba(0,217,126,.15)',`🏆 SUCESSO: ${d.emp} — ${fmtR(valNum)} adicionado ao Financeiro`);
-    rNotifs();rFinanceiro();
-    // Reconstrói charts de receita
-    ['ch-rec','ch-fin','ch-ano'].forEach(k=>{if(charts[k]){charts[k].destroy();delete charts[k];}});
-    setTimeout(initCharts,120);
-    // Navega para Financeiro e mostra toast comemorativo
-    setTimeout(()=>{
-      go('financeiro', document.querySelector('.ni[data-p="financeiro"]'));
-      toast(`🏆 ${d.emp} chegou ao SUCESSO! ${fmtR(valNum)} lançado no Fluxo de Caixa!`);
-    },300);
+
+    // Lança no financeiro SE ainda não foi lançado
+    if(!d.lancado){
+      d.lancado=true;
+      if(valNum>0){
+        DB.movs.unshift({
+          id:uid(), tipo:'in',
+          val:String(valNum),
+          desc:`🏆 Venda — ${d.emp}`,
+          ref:`Pipeline · ${TAGL[d.tag]||d.tag} · ${nowStr()}`
+        });
+        rFinanceiro();
+        ['ch-rec','ch-fin','ch-ano'].forEach(k=>{if(charts[k]){charts[k].destroy();delete charts[k];}});
+        setTimeout(initCharts,120);
+      }
+    }
+
+    // Vincula OS do cliente a esta venda
+    const osCliente=DB.os.filter(o=>o.cli===d.emp&&o.s!=='at');
+    if(osCliente.length>0){
+      toast(`🏆 ${d.emp} — SUCESSO! ${valNum>0?fmtR(valNum)+' lançado.':''} ${osCliente.length} OS pendente(s).`);
+    } else {
+      toast(`🏆 ${d.emp} chegou ao SUCESSO! ${valNum>0?fmtR(valNum)+' lançado no Financeiro!':''}`);
+    }
+
+    DB.notifs.unshift({ic:'🏆',t:`Venda concluída: ${d.emp}`,sub:`${valNum>0?fmtR(valNum)+' adicionado ao financeiro':'Venda sem valor definido'}`,time:nowStr(),tipo:'success'});
+    addFeed('🏆','rgba(0,217,126,.15)',`SUCESSO: ${d.emp} — ${fmtR(valNum)}`);
+    rNotifs();
+
   } else {
-    const nomeEtapa=STAGE_NAMES[ns]||'próxima etapa';
+    const nomeEtapa=DB.stages[ns]?.n||'próxima etapa';
     toast(`${d.emp} → ${nomeEtapa}`);
-    addFeed('🔀','rgba(245,166,35,.12)',`${d.emp} movido para ${nomeEtapa}`);
+    addFeed('🔀','rgba(245,166,35,.12)',`${d.emp} → ${nomeEtapa}`);
   }
-  rPipeline();updKPI();
+
+  rPipeline(); updKPI(); autoSave();
 }
 
 function rPipeline(){
@@ -1984,21 +1998,22 @@ function rEquipe(){
   g.innerHTML=tecNames.map((nome,i)=>{
     const tecObj=DB.tecnicos.find(t=>(typeof t==='string'?t:t.nome)===nome);
     const sal=typeof tecObj==='object'?tecObj.salario||0:0;
-    const osDoTec=DB.os.filter(o=>o.tec===nome);
-    const osCon=osDoTec.filter(o=>o.s==='at');
-    const osAb=osDoTec.filter(o=>o.s!=='at');
-    const totalRec=osDoTec.reduce((a,o)=>a+(o.valor||0),0);
-    const totalLuc=osDoTec.reduce((a,o)=>a+(o.lucro||0),0);
-    const custoDia=sal>0?sal/diasUteis:0;
-    const custoMes=sal||0;
+    const diaria=typeof tecObj==='object'?tecObj.diaria||0:0;
+    // Custo por OS = diária cadastrada OU salário/dias úteis
+    const custoPorOS=diaria>0?diaria:(sal>0?Math.round(sal/diasUteis):0);
+    // Total de OS feitas (abertas + concluídas = tudo que o técnico trabalhou)
+    const totalRec=osDoTec.reduce((a,o)=>a+(o.valPorTec||o.valor||0),0);
+    const custoTotal=custoPorOS*osDoTec.length;
+    const totalLuc=totalRec-custoTotal;
     const cores=['#f5a623','#3d9bff','#00d97e','#b08fff','#ff8c42','#ff4560'];
     const cor=cores[i%cores.length];
+    const infoSal=diaria>0?`Diária: ${fmtR(diaria)}`:(sal>0?`Salário: ${fmtR(sal)}/mês · Diária: ${fmtR(custoPorOS)}`:'Sem valor cadastrado');
     return `<div style="background:var(--s1);border:1px solid var(--bd);border-radius:13px;padding:14px;border-top:3px solid ${cor}">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
         <div style="width:44px;height:44px;border-radius:50%;background:${cor}22;color:${cor};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900">${nome[0]?.toUpperCase()}</div>
         <div>
           <div style="font-weight:800;font-size:14px">${nome}</div>
-          <div style="font-size:11px;color:var(--t3)">${sal>0?`Salário: ${fmtR(sal)}/mês`:'Salário não cadastrado'}</div>
+          <div style="font-size:11px;color:var(--t3)">${infoSal}</div>
         </div>
       </div>
 
@@ -2040,6 +2055,25 @@ function rEquipe(){
           </div>
         </div>
         ${sal>0?`<div style="font-size:10px;color:var(--t3);margin-top:7px;font-style:italic">📅 ${diasUteis} dias úteis em ${hoje.toLocaleDateString('pt-BR',{month:'long'})} (${feriados} feriado${feriados!==1?'s':''})</div>`:''}
+      </div>`:''}
+
+      ${osDoTec.length>0||custoPorOS>0?`<div style="background:var(--s2);border-radius:9px;padding:10px;margin-bottom:8px">
+        <div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">💰 Acumulado — ${osDoTec.length} OS</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
+          <div>
+            <div style="font-size:10px;color:var(--t3)">Receita Gerada</div>
+            <div style="font-size:16px;font-weight:800;color:var(--green)">${fmtR(totalRec)}</div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--t3)">Custo Total (${osDoTec.length}× ${fmtR(custoPorOS)})</div>
+            <div style="font-size:16px;font-weight:800;color:var(--red)">${fmtR(custoTotal)}</div>
+          </div>
+          <div style="grid-column:1/-1">
+            <div style="font-size:10px;color:var(--t3)">Lucro Líquido</div>
+            <div style="font-size:20px;font-weight:900;color:${totalLuc>=0?'var(--green)':'var(--red)'}">${fmtR(totalLuc)}</div>
+          </div>
+        </div>
+        <div style="font-size:10px;color:var(--t3);margin-top:6px;font-style:italic">📅 ${diasUteis} dias úteis em ${hoje.toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</div>
       </div>`:''}
 
       <!-- OS recentes -->
@@ -2490,12 +2524,18 @@ const MFRM={
   <div class="fg"><label>Referência</label><input class="fc" id="f3" placeholder="Ex: Fatura Mai/2026"></div>`,
 
   tecnico:`
-    <div class="fg"><label>Nome Completo *</label><input class="fc" id="f0" placeholder="Ex: Lucas Ferreira"></div>
+    <div class="fg"><label>Nome Completo *</label><input class="fc" id="f0" placeholder="Ex: Adenilson Silva"></div>
     <div class="fg2">
       <div class="fg"><label>WhatsApp</label><input class="fc" id="tec-tel" placeholder="(81) 99999-0000"></div>
-      <div class="fg"><label>Especialidade</label><input class="fc" id="tec-esp" placeholder="Ex: CFTV, Alarmes, Elétrica"></div>
+      <div class="fg"><label>Especialidade</label><input class="fc" id="tec-esp" placeholder="Ex: CFTV, Alarmes"></div>
     </div>
-    <div class="fg"><label>💰 Salário Mensal (R$)</label><input class="fc" id="tec-sal" type="number" placeholder="Ex: 1800"></div>`,
+    <div class="fg2">
+      <div class="fg"><label>💰 Valor da Diária (R$)</label><input class="fc" id="tec-diaria" type="number" placeholder="Ex: 90"></div>
+      <div class="fg"><label>Salário Mensal (R$) — opcional</label><input class="fc" id="tec-sal" type="number" placeholder="Ex: 1800"></div>
+    </div>
+    <div style="font-size:11px;color:var(--t3);background:rgba(245,166,35,.07);border-radius:7px;padding:8px">
+      💡 Se cadastrar a <strong>Diária</strong>, o sistema usa ela direto. Se cadastrar só o Salário, calcula a diária automaticamente pelos dias úteis do mês.
+    </div>`,
 };
 const MTIT={lead:'➕ Novo Lead',empresa:'🏢 Cadastrar Empresa',contato:'👤 Novo Contato',cliente:'👥 Novo Cliente',os:'🔧 Nova OS',contrato:'📄 Novo Contrato',agenda:'📅 Novo Evento',usuario:'🔐 Nova Conta de Acesso',mov:'💰 Lançamento Financeiro',tecnico:'👷 Novo Instalador / Técnico'};
 
@@ -2736,10 +2776,15 @@ const M={
       const tel=($('tec-tel')?.value||'').trim();
       const esp=($('tec-esp')?.value||'').trim();
       const salario=parseFloat($('tec-sal')?.value||'0')||0;
-      DB.tecnicos.push(tel||esp||salario?{nome,tel,esp,salario}:nome);
+      const diaria=parseFloat($('tec-diaria')?.value||'0')||0;
+      // Verifica se já existe
+      if(DB.tecnicos.find(t=>(typeof t==='string'?t:t.nome)===nome)){
+        toast(`⚠️ ${nome} já está cadastrado!`); return;
+      }
+      DB.tecnicos.push({nome,tel,esp,salario,diaria});
       rTecnicos();M.close();
-      addFeed('👷','rgba(245,166,35,.12)',`Técnico cadastrado: ${nome}`);
-      autoSave();toast(`👷 ${nome} cadastrado como instalador!`);return;
+      addFeed('👷','rgba(245,166,35,.12)',`Técnico cadastrado: ${nome}${diaria>0?' · Diária: '+fmtR(diaria):''}`);
+      autoSave();toast(`👷 ${nome} cadastrado! ${diaria>0?'Diária: '+fmtR(diaria):''}` );return;
     }
 
     M.close();toast('✅ Cadastrado com sucesso!');updKPI();
