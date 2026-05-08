@@ -2178,82 +2178,132 @@ function rCfgNotifs(){
   </div>`).join('');
 }
 function rTecnicos(){
-  // Normaliza todos os técnicos para objeto (compatibilidade com versões antigas)
+  // Normaliza todos os técnicos para objeto
   DB.tecnicos = DB.tecnicos.map(t=>
-    typeof t==='string' ? {nome:t,tel:'',esp:'',salario:0,diaria:0} : t
+    typeof t==='string' ? {nome:t,tel:'',esp:'',salario:0,diaria:0} : {...t}
   );
 
-  // Atualiza select de técnicos nos modais de OS
+  // Atualiza select nos modais de OS
   const sel=$('f2');
   if(sel){
-    const cur=sel.value;
     sel.innerHTML=DB.tecnicos.length
-      ?DB.tecnicos.map(t=>`<option${t.nome===cur?' selected':''}>${t.nome}</option>`).join('')
+      ?DB.tecnicos.map(t=>`<option>${t.nome}</option>`).join('')
       :'<option>— Nenhum técnico —</option>';
   }
 
-  // Renderiza cards de técnicos na página OS
   const el=$('tec-cards'); if(!el) return;
   const adm=isAdmin();
+
   if(!DB.tecnicos.length){
     el.innerHTML=`<div style="grid-column:1/-1">${empty('👷','Nenhum instalador cadastrado','Clique em "+ Adicionar" para cadastrar')}</div>`;
     return;
   }
+
+  // Função robusta para encontrar OS de um técnico
+  function osDoTecnico(nome){
+    return DB.os.filter(o=>{
+      if(!o.tec && !o.tecs) return false;
+      // Verifica campo tec (string, pode ser "Dayvson, Ruan")
+      const tecStr = (o.tec||'').split(',').map(s=>s.trim().toLowerCase());
+      if(tecStr.includes(nome.toLowerCase())) return true;
+      // Verifica campo tecs (array de objetos)
+      if(o.tecs&&Array.isArray(o.tecs)){
+        return o.tecs.some(t=>(t.nome||t||'').toLowerCase()===nome.toLowerCase());
+      }
+      return false;
+    });
+  }
+
+  const hoje=new Date();
+  const diasNoMes=new Date(hoje.getFullYear(),hoje.getMonth()+1,0).getDate();
+  const feriados=['01/01','21/04','01/05','07/09','12/10','02/11','15/11','25/12']
+    .filter(d=>parseInt(d.split('/')[1])-1===hoje.getMonth()).length;
+  const diasUteis=diasNoMes-feriados-Math.floor(diasNoMes/7)*2;
+
   const cores=['#f5a623','#3d9bff','#00d97e','#b08fff','#ff8c42','#ff4560'];
+
   el.innerHTML=DB.tecnicos.map((t,i)=>{
     const nome=t.nome||'?';
     const tel=t.tel||'';
     const esp=t.esp||'';
     const diaria=t.diaria||0;
     const sal=t.salario||0;
-    const osDoTec=DB.os.filter(o=>o.tec&&(
-      o.tec.split(',').map(x=>x.trim()).includes(nome)||
-      (o.tecs||[]).some(x=>(x.nome||x)===nome)
-    ));
-    const osAb=osDoTec.filter(o=>o.s!=='at').length;
-    const osCon=osDoTec.filter(o=>o.s==='at').length;
+    const custoDia=diaria>0?diaria:(sal>0?Math.round(sal/diasUteis):0);
     const cor=cores[i%cores.length];
-    const custoPorOS=diaria>0?diaria:0;
-    const totalRec=osDoTec.reduce((a,o)=>a+(o.valPorTec||o.valor||0),0);
-    const custoTotal=custoPorOS*osDoTec.length;
-    return `<div style="background:var(--s1);border:1px solid var(--bd);border-radius:12px;padding:13px;display:flex;flex-direction:column;gap:8px;border-top:3px solid ${cor}">
-      <div style="display:flex;align-items:center;gap:9px">
-        <div style="width:42px;height:42px;border-radius:50%;background:${cor}22;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:${cor};flex-shrink:0">${nome[0]?.toUpperCase()||'?'}</div>
+
+    const todasOS  = osDoTecnico(nome);
+    const abertas  = todasOS.filter(o=>o.s!=='at');
+    const concluidas = todasOS.filter(o=>o.s==='at');
+
+    // Valores financeiros
+    const receitaTotal = todasOS.reduce((a,o)=>{
+      // Se OS tem múltiplos técnicos, divide igualmente
+      const n = o.nTecs||1;
+      return a + (o.valor||0)/n;
+    },0);
+    const custoTotal = custoDia * todasOS.length;
+    const lucro = receitaTotal - custoTotal;
+
+    // Valores por categoria
+    const recAbertas  = abertas.reduce((a,o)=>a+(o.valor||0)/(o.nTecs||1),0);
+    const recConcluidas=concluidas.reduce((a,o)=>a+(o.valor||0)/(o.nTecs||1),0);
+
+    return `<div style="background:var(--s1);border:1px solid var(--bd);border-radius:13px;overflow:hidden;border-top:3px solid ${cor}">
+      <!-- Header -->
+      <div style="padding:13px 13px 10px;display:flex;align-items:center;gap:10px">
+        <div style="width:44px;height:44px;border-radius:50%;background:${cor}22;display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:900;color:${cor};flex-shrink:0">${nome[0]?.toUpperCase()||'?'}</div>
         <div style="flex:1;min-width:0">
-          <div style="font-weight:800;font-size:13.5px">${nome}</div>
+          <div style="font-weight:800;font-size:14px">${nome}</div>
           <div style="font-size:11px;color:var(--t3)">${esp||'Instalador / Técnico'}</div>
-          ${diaria>0?`<div style="font-size:11px;color:var(--gold);font-weight:700">💰 Diária: ${fmtR(diaria)}</div>`:sal>0?`<div style="font-size:11px;color:var(--t3)">Salário: ${fmtR(sal)}/mês</div>`:''}
+          ${custoDia>0
+            ?`<div style="font-size:11px;color:var(--gold);font-weight:700">💰 Diária: ${fmtR(custoDia)}</div>`
+            :`<div style="font-size:11px;color:var(--red)">⚠️ Cadastre a diária</div>`}
           ${tel?`<div style="font-size:11px;color:var(--t2)">${tel}</div>`:''}
         </div>
       </div>
-      <div style="display:flex;gap:7px">
-        <div style="flex:1;background:var(--s2);border-radius:7px;padding:7px;text-align:center">
-          <div style="font-size:16px;font-weight:800;color:${osAb>0?'var(--orange)':'var(--t2)'}">${osAb}</div>
-          <div style="font-size:9px;color:var(--t3);text-transform:uppercase">Abertas</div>
+
+      <!-- OS Stats com valores -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--bd)">
+        <div style="background:var(--s2);padding:9px;text-align:center">
+          <div style="font-size:18px;font-weight:900;color:${abertas.length>0?'var(--orange)':'var(--t3)'}">${abertas.length}</div>
+          <div style="font-size:9px;color:var(--t3);text-transform:uppercase;margin-bottom:3px">Abertas</div>
+          <div style="font-size:11px;font-weight:700;color:var(--orange)">${recAbertas>0?fmtR(Math.round(recAbertas)):'—'}</div>
         </div>
-        <div style="flex:1;background:var(--s2);border-radius:7px;padding:7px;text-align:center">
-          <div style="font-size:16px;font-weight:800;color:var(--green)">${osCon}</div>
-          <div style="font-size:9px;color:var(--t3);text-transform:uppercase">Concluídas</div>
+        <div style="background:var(--s2);padding:9px;text-align:center">
+          <div style="font-size:18px;font-weight:900;color:${concluidas.length>0?'var(--green)':'var(--t3)'}">${concluidas.length}</div>
+          <div style="font-size:9px;color:var(--t3);text-transform:uppercase;margin-bottom:3px">Concluídas</div>
+          <div style="font-size:11px;font-weight:700;color:var(--green)">${recConcluidas>0?fmtR(Math.round(recConcluidas)):'—'}</div>
         </div>
-        <div style="flex:1;background:var(--s2);border-radius:7px;padding:7px;text-align:center">
-          <div style="font-size:16px;font-weight:800;color:var(--t2)">${osDoTec.length}</div>
-          <div style="font-size:9px;color:var(--t3);text-transform:uppercase">Total</div>
+        <div style="background:var(--s2);padding:9px;text-align:center">
+          <div style="font-size:18px;font-weight:900;color:var(--blue)">${todasOS.length}</div>
+          <div style="font-size:9px;color:var(--t3);text-transform:uppercase;margin-bottom:3px">Total OS</div>
+          <div style="font-size:11px;font-weight:700;color:var(--blue)">${receitaTotal>0?fmtR(Math.round(receitaTotal)):'—'}</div>
         </div>
       </div>
-      ${osDoTec.length>0&&custoPorOS>0?`<div style="background:var(--s2);border-radius:7px;padding:8px;font-size:11px">
-        <div style="display:flex;justify-content:space-between;margin-bottom:3px">
-          <span style="color:var(--t3)">Receita</span><span style="color:var(--green);font-weight:700">${fmtR(totalRec)}</span>
+
+      <!-- Financeiro acumulado -->
+      ${custoDia>0&&todasOS.length>0?`<div style="padding:10px 13px;background:var(--s2);border-top:1px solid var(--bd)">
+        <div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:7px">💰 Financeiro — ${todasOS.length} OS × ${fmtR(custoDia)}/dia</div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+          <span style="color:var(--t2)">Receita total</span>
+          <span style="color:var(--green);font-weight:700">${fmtR(Math.round(receitaTotal))}</span>
         </div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:3px">
-          <span style="color:var(--t3)">${osDoTec.length}× diária</span><span style="color:var(--red);font-weight:700">${fmtR(custoTotal)}</span>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px">
+          <span style="color:var(--t2)">Custo (${todasOS.length}× ${fmtR(custoDia)})</span>
+          <span style="color:var(--red);font-weight:700">${fmtR(custoTotal)}</span>
         </div>
-        <div style="display:flex;justify-content:space-between;border-top:1px solid var(--bd);padding-top:4px;margin-top:4px">
-          <span style="color:var(--t2);font-weight:700">Lucro</span><span style="color:${totalRec-custoTotal>=0?'var(--green)':'var(--red)'};font-weight:800;font-size:13px">${fmtR(totalRec-custoTotal)}</span>
+        <div style="display:flex;justify-content:space-between;font-size:13px;border-top:1px solid var(--bd);padding-top:6px">
+          <span style="font-weight:700">Lucro líquido</span>
+          <span style="font-weight:900;color:${lucro>=0?'var(--green)':'var(--red)'}">${fmtR(Math.round(lucro))}</span>
         </div>
+      </div>`:custoDia===0?`<div style="padding:8px 13px;background:rgba(255,69,96,.07);border-top:1px solid rgba(255,69,96,.2)">
+        <div style="font-size:11px;color:var(--red)">⚠️ Cadastre a diária para ver o financeiro</div>
       </div>`:''}
-      ${adm?`<div style="display:flex;gap:6px">
-        ${tel?`<button class="btn" style="flex:1;background:#25d366;color:#000;font-size:10px;font-weight:800;padding:5px;border-radius:7px" onclick="window.open('https://wa.me/55${tel.replace(/\D/g,'')}','_blank')">💬 WhatsApp</button>`:''}
-        <button class="btn br sm" style="padding:5px 9px;font-size:10px" onclick="delTecnico(${i})">🗑️ Remover</button>
+
+      <!-- Ações -->
+      ${adm?`<div style="padding:8px 13px;display:flex;gap:6px">
+        ${tel?`<button class="btn" style="flex:1;background:#25d366;color:#000;font-size:10px;font-weight:800;padding:5px;border-radius:7px;justify-content:center" onclick="window.open('https://wa.me/55${tel.replace(/\D/g,'')}','_blank')">💬 WhatsApp</button>`:''}
+        <button class="btn br sm" style="font-size:10px;flex:1;justify-content:center" onclick="delTecnico(${i})">🗑️ Remover</button>
       </div>`:''}
     </div>`;
   }).join('');
