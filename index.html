@@ -624,6 +624,7 @@ tr:hover td{background:rgba(255,255,255,.017);}
         </div>
       </div>
       <div class="card"><div class="ch"><span class="ct">Templates Rápidos</span></div><div class="cb" id="wa-tpls"></div></div>
+      <div class="card"><div class="ch"><span class="ct">🤖 Mensagens Automáticas</span><span class="pill pg2">Pipeline</span></div><div class="cb" id="wa-auto-cfg"></div></div>
       <div class="card"><div class="ch"><span class="ct">⚙️ Config WhatsApp</span><span class="pill" id="wa-status-badge" style="color:var(--gold)">● Modo Link</span></div><div class="cb" id="wa-cfg-section"></div></div>
     </div>
     <div class="card" style="display:flex;flex-direction:column;overflow:hidden;max-height:500px">
@@ -1232,7 +1233,7 @@ function go(id,el){
   if(id==='admin')    setTimeout(rAdminPanel,100);
   if(id==='proposta') setTimeout(rPropostas,100);
   if(id==='historico'){ setTimeout(()=>{popularHistoricoSel();rHistorico(_histCliente);},100); }
-  if(id==='whatsapp') setTimeout(rWACfg,100);
+  if(id==='whatsapp') setTimeout(()=>{ rWACfg(); rWAAutoCfg(); },100);
   if(id==='os')       setTimeout(()=>{ rOS(); rTecnicos(); },100);
   if(id==='equipe')   setTimeout(rEquipe,100);
   if(id==='config')   setTimeout(()=>{ atualizarStatusGDrive(); atualizarBackupStats(); atualizarStatusConexao(); atualizarStatusJB(); setTimeout(atualizarStatusKey,200); },100);
@@ -1355,6 +1356,9 @@ function advDeal(id,dir){
     DB.notifs.unshift({ic:'🏆',t:`Venda concluída: ${d.emp}`,sub:`${valNum>0?fmtR(valNum)+' adicionado ao financeiro':'Venda sem valor definido'}`,time:nowStr(),tipo:'success'});
     addFeed('🏆','rgba(0,217,126,.15)',`SUCESSO: ${d.emp} — ${fmtR(valNum)}`);
     rNotifs();
+
+    // Envia mensagem automática de boas-vindas
+    if(DB.autoMsg?.ativo) setTimeout(()=>enviarMsgSucesso(d.emp), 500);
 
   } else {
     const nomeEtapa=DB.stages[ns]?.n||'próxima etapa';
@@ -5664,6 +5668,116 @@ function iniciarSyncJB(){
   console.log('☁️ JSONBin: sync iniciado');
 }
 
+// ═══════════════════════════════════════════════════
+//  🤖 MENSAGENS AUTOMÁTICAS — Pipeline Sucesso
+// ═══════════════════════════════════════════════════
+
+if(!DB.autoMsg) DB.autoMsg = {
+  ativo: true,
+  wa: true,
+  email: true,
+  msgWA: `Olá {nome}! 🎉\n\nÉ com grande satisfação que informamos que sua instalação foi aprovada e estamos prontos para atendê-lo!\n\nEm breve entraremos em contato para agendar o melhor horário.\n\nAtenciosamente,\nGrupo Aliança Monitoramento 🛡️`,
+  msgEmail: `Prezado(a) {nome},\n\nÉ com grande satisfação que confirmamos a aprovação do seu contrato com o Grupo Aliança Monitoramento!\n\nNosso técnico entrará em contato em breve para agendar a instalação no melhor horário para você.\n\nQualquer dúvida, estamos à disposição.\n\nAtenciosamente,\nEquipe Grupo Aliança Monitoramento`,
+  assuntoEmail: '🏆 Bem-vindo ao Grupo Aliança Monitoramento!'
+};
+
+function rWAAutoCfg(){
+  const el=$('wa-auto-cfg'); if(!el) return;
+  const a=DB.autoMsg;
+  el.innerHTML=`
+    <div style="background:rgba(0,217,126,.07);border:1px solid rgba(0,217,126,.2);border-radius:9px;padding:10px;margin-bottom:12px;font-size:11.5px;color:var(--t2);line-height:1.6">
+      🤖 Quando um cliente chegar em <strong style="color:var(--green)">🏆 Sucesso</strong> no Pipeline, o sistema envia automaticamente uma mensagem de boas-vindas por WhatsApp e/ou E-mail.
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <!-- Ativar/desativar -->
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;background:var(--s2);border-radius:9px;padding:10px">
+        <input type="checkbox" id="auto-ativo" ${a.ativo?'checked':''} onchange="DB.autoMsg.ativo=this.checked;autoSave()" style="width:16px;height:16px;accent-color:var(--gold)">
+        <div><div style="font-weight:700;font-size:13px">Mensagens automáticas ativas</div>
+        <div style="font-size:11px;color:var(--t3)">Envia ao mover para 🏆 Sucesso</div></div>
+        <span class="pill ${a.ativo?'pg2':'pl'}" style="margin-left:auto">${a.ativo?'● Ativo':'⏸ Pausado'}</span>
+      </label>
+
+      <!-- Canais -->
+      <div style="display:flex;gap:8px">
+        <label style="flex:1;display:flex;align-items:center;gap:8px;cursor:pointer;background:var(--s2);border-radius:9px;padding:10px">
+          <input type="checkbox" id="auto-wa" ${a.wa?'checked':''} onchange="DB.autoMsg.wa=this.checked;autoSave()" style="width:15px;height:15px;accent-color:#25d366">
+          <span style="font-size:12px;font-weight:700">💬 WhatsApp</span>
+        </label>
+        <label style="flex:1;display:flex;align-items:center;gap:8px;cursor:pointer;background:var(--s2);border-radius:9px;padding:10px">
+          <input type="checkbox" id="auto-email" ${a.email?'checked':''} onchange="DB.autoMsg.email=this.checked;autoSave()" style="width:15px;height:15px;accent-color:var(--blue)">
+          <span style="font-size:12px;font-weight:700">📧 E-mail</span>
+        </label>
+      </div>
+
+      <!-- Template WhatsApp -->
+      <div class="fg" style="margin:0">
+        <label>Mensagem WhatsApp <span style="color:var(--t3);font-size:10px">(use {nome} para o nome do cliente)</span></label>
+        <textarea class="fc" id="auto-msg-wa" rows="5" onchange="DB.autoMsg.msgWA=this.value;autoSave()">${a.msgWA||''}</textarea>
+      </div>
+
+      <!-- Template E-mail -->
+      <div class="fg" style="margin:0">
+        <label>Assunto do E-mail</label>
+        <input class="fc" id="auto-assunto" value="${a.assuntoEmail||''}" onchange="DB.autoMsg.assuntoEmail=this.value;autoSave()">
+      </div>
+      <div class="fg" style="margin:0">
+        <label>Corpo do E-mail <span style="color:var(--t3);font-size:10px">(use {nome})</span></label>
+        <textarea class="fc" id="auto-msg-email" rows="5" onchange="DB.autoMsg.msgEmail=this.value;autoSave()">${a.msgEmail||''}</textarea>
+      </div>
+
+      <button class="btn bg" onclick="testarMsgAutomatica()" style="justify-content:center">🧪 Testar com cliente de exemplo</button>
+    </div>`;
+}
+
+async function enviarMsgSucesso(nomeCliente){
+  if(!DB.autoMsg?.ativo) return;
+
+  const emp=DB.empresas.find(e=>e.nome===nomeCliente)||{};
+  const tel=(emp.tel||'').replace(/\D/g,'');
+  const email=emp.email||DB.contatos.find(c=>c.nome===nomeCliente||c.emp===nomeCliente)?.email||'';
+
+  const msgWA=(DB.autoMsg.msgWA||'').replace(/\{nome\}/g,nomeCliente);
+  const msgEmail=(DB.autoMsg.msgEmail||'').replace(/\{nome\}/g,nomeCliente);
+  const assunto=DB.autoMsg.assuntoEmail||'Bem-vindo ao Grupo Aliança Monitoramento!';
+
+  let enviados=[];
+
+  // WhatsApp
+  if(DB.autoMsg.wa&&tel){
+    if(DB.waCfg?.tipo==='evolution'&&DB.waCfg?.apiUrl&&DB.waCfg?.apiKey){
+      await enviarWA(tel,msgWA,nomeCliente);
+      enviados.push('WhatsApp');
+    } else {
+      // Abre link WA
+      window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(msgWA)}`,'_blank');
+      enviados.push('WhatsApp (link)');
+    }
+  } else if(DB.autoMsg.wa&&!tel){
+    DB.notifs.unshift({ic:'⚠️',t:`WA automático — sem telefone`,sub:`${nomeCliente} não tem WhatsApp cadastrado`,time:nowStr(),tipo:'warn'});
+  }
+
+  // E-mail
+  if(DB.autoMsg.email&&email){
+    await enviarEmail(email, assunto, msgEmail);
+    enviados.push('E-mail');
+  } else if(DB.autoMsg.email&&!email){
+    DB.notifs.unshift({ic:'⚠️',t:`E-mail automático — sem e-mail`,sub:`${nomeCliente} não tem e-mail cadastrado`,time:nowStr(),tipo:'warn'});
+  }
+
+  if(enviados.length){
+    toast(`🤖 Enviado automaticamente: ${enviados.join(' + ')} para ${nomeCliente}`);
+    addFeed('🤖','rgba(0,217,126,.12)',`Msg automática enviada para ${nomeCliente}: ${enviados.join(', ')}`);
+    adicionarEvento(nomeCliente,'email',`Mensagem automática de boas-vindas enviada (${enviados.join(', ')})`,'🤖');
+  }
+  rNotifs();
+}
+
+function testarMsgAutomatica(){
+  const msg=(DB.autoMsg.msgWA||'').replace(/\{nome\}/g,'Cliente Teste');
+  alert(`📱 Prévia WhatsApp:\n\n${msg}`);
+}
+
 function popularHistoricoSel(){
   const sel=$('hist-cliente-sel'); if(!sel) return;
   sel.innerHTML='<option value="">— Selecione um cliente —</option>'
@@ -5678,7 +5792,7 @@ function initApp(){
   if(!DB.emailTpls) DB.emailTpls=[];
   if(!DB.propostas) DB.propostas=[];
   if(!DB.historico) DB.historico={};
-  if(!DB.waCfg)     DB.waCfg={tipo:'link',apiUrl:'',apiKey:'',instancia:'',numero:''};
+  if(!DB.autoMsg)   DB.autoMsg={ativo:true,wa:true,email:true,msgWA:`Olá {nome}! 🎉\n\nSua instalação foi aprovada! Em breve entraremos em contato para agendar.\n\nAtenciosamente,\nGrupo Aliança Monitoramento 🛡️`,msgEmail:`Prezado(a) {nome},\n\nConfirmamos a aprovação do seu contrato!\n\nNosso técnico entrará em contato em breve.\n\nAtenciosamente,\nGrupo Aliança Monitoramento`,assuntoEmail:'🏆 Bem-vindo ao Grupo Aliança Monitoramento!'};
   if(!DB.adminCfg)  DB.adminCfg={osTipos:['Instalação','Manutenção Preventiva','Configuração Central','Reparo','Vistoria'],servicos:[{key:'mo',label:'📹 Monitoramento 24h',cor:'#f5a623'},{key:'ca',label:'🎥 CFTV',cor:'#3d9bff'},{key:'al',label:'🚨 Alarmes',cor:'#ff4560'},{key:'co',label:'🚪 Acesso',cor:'#00d97e'},{key:'ra',label:'📡 Rastreamento',cor:'#b08fff'}],status:[{key:'at',label:'Ativo',cor:'#00d97e'},{key:'pr',label:'Proposta',cor:'#f5a623'},{key:'ng',label:'Negociação',cor:'#ff8c42'},{key:'pd',label:'Atraso',cor:'#ff4560'},{key:'vt',label:'Em andamento',cor:'#3d9bff'}],segmentos:['Condomínio','Comércio','Indústria','Saúde','Educação','Financeiro','Residencial','Outro'],camposExtras:[]};
 
   // Detecta modo de operação
