@@ -6165,5 +6165,134 @@ function converterLeadIA(nome, email, cor){
 </script>
 <!-- ===== FIM DO SCRIPT DE LEADS ===== -->
 
+<!-- ===== SCRIPT DE LEADS ESTRATEGISTA IA - COPIAR PARA O index.html ===== -->
+<!-- Adicionar ANTES do </body> -->
+
+<script>
+// Auto-patch: adiciona a tela de Leads ao CRM
+(function(){
+  // 1. Adicionar ao menu de navegação
+  const niInteligencia = document.querySelector('.ni[data-p="inteligencia"]');
+  if(niInteligencia && !document.querySelector('.ni[data-p="leads-ia"]')){
+    const niLeads = document.createElement('div');
+    niLeads.className = 'ni';
+    niLeads.setAttribute('data-p', 'leads-ia');
+    niLeads.onclick = function(){ go('leads-ia', this); carregarLeadsEstrategista(); };
+    niLeads.innerHTML = '<span class="nic">🤖</span>Leads Estrategista<span class="nb" id="leads-count" style="background:var(--purple);color:#fff">0</span>';
+    niInteligencia.parentNode.insertBefore(niLeads, niInteligencia.nextSibling);
+  }
+
+  // 2. Adicionar a página ao container
+  const cnt = document.querySelector('.cnt');
+  if(cnt && !document.getElementById('pg-leads-ia')){
+    const pgLeads = document.createElement('div');
+    pgLeads.className = 'pg';
+    pgLeads.id = 'pg-leads-ia';
+    pgLeads.innerHTML = `
+      <div class="g4">
+        <div class="kpi kp"><div class="kic">🤖</div><div class="kl">Total de Leads</div><div class="kv" id="leads-kpi-total">0</div><div class="kd up">via Estrategista IA</div></div>
+        <div class="kpi kg"><div class="kic">🔥</div><div class="kl">Aguardando Contato</div><div class="kv" id="leads-kpi-pend">0</div><div class="kd">prontos para pipeline</div></div>
+        <div class="kpi kb"><div class="kic">📧</div><div class="kl">Com E-mail</div><div class="kv" id="leads-kpi-email">0</div><div class="kd">podem receber proposta</div></div>
+        <div class="kpi kgr"><div class="kic">✅</div><div class="kl">Convertidos</div><div class="kv" id="leads-kpi-conv">0</div><div class="kd">já no funil</div></div>
+      </div>
+      <div class="card">
+        <div class="ch">
+          <span class="ct">🤖 Leads captados pelo Estrategista IA</span>
+          <div style="display:flex;gap:7px">
+            <button class="btn bg sm" onclick="carregarLeadsEstrategista()">🔄 Atualizar</button>
+            <button class="btn bgh sm" onclick="go('pipeline',document.querySelector('.ni[data-p=pipeline]'))">🔀 Ver Pipeline</button>
+          </div>
+        </div>
+        <div class="cb" id="leads-lista">
+          <div class="empty">
+            <div class="ei">🤖</div>
+            <div class="et">Clique em Atualizar</div>
+            <div class="es">Busca os leads captados pelo Estrategista IA automaticamente</div>
+          </div>
+        </div>
+      </div>`;
+    // Inserir antes da página de inteligencia
+    const pgIntel = document.getElementById('pg-inteligencia');
+    if(pgIntel) cnt.insertBefore(pgLeads, pgIntel);
+    else cnt.appendChild(pgLeads);
+  }
+
+  // 3. Registrar título da página
+  if(typeof PTIT !== 'undefined' && !PTIT['leads-ia']){
+    PTIT['leads-ia'] = '🤖 Leads Estrategista IA';
+  }
+})();
+
+// === FUNÇÕES DE LEADS ===
+async function carregarLeadsEstrategista(){
+  const el = document.getElementById('leads-lista'); if(!el) return;
+  el.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:20px;color:var(--t2)"><div style="width:18px;height:18px;border:2px solid var(--bd);border-top-color:var(--gold);border-radius:50%;animation:spin 1s linear infinite"></div><span>Buscando leads do Estrategista IA...</span></div>';
+  try {
+    const JB_KEY = '$2a$10$hVdT1fgXeYtrZdl2D1AX9uirosaAYDz7m5nlYUOkDI9OtZJ2G4qwa';
+    const JB_BIN = '69f53df9856a6821899751fd';
+    const r = await fetch('/jb/' + JB_BIN, { headers: {'x-jb-key': JB_KEY} });
+    const data = await r.json();
+    const todasEmpresas = data.record?.empresas || [];
+    const leads = todasEmpresas.filter(e => e.obs && e.obs.includes('Estrategista IA'));
+    const comEmail = leads.filter(e => e.email).length;
+    const convertidos = leads.filter(e => DB.deals.some(d => d.emp === e.nome)).length;
+    const aguardando = leads.length - convertidos;
+    const setEl = (id, v) => { const x = document.getElementById(id); if(x) x.textContent = v; };
+    setEl('leads-kpi-total', leads.length);
+    setEl('leads-kpi-pend', aguardando);
+    setEl('leads-kpi-email', comEmail);
+    setEl('leads-kpi-conv', convertidos);
+    setEl('leads-count', leads.length);
+    if(!leads.length){
+      el.innerHTML = '<div class="empty"><div class="ei">🤖</div><div class="et">Nenhum lead ainda</div><div class="es">Os leads aparecem aqui quando alguém se cadastrar no Estrategista IA.</div><div style="margin-top:12px;font-size:11px;color:var(--t3)">App: <strong style="color:var(--gold)">estrategista-ia-app-production.up.railway.app</strong></div></div>';
+      return;
+    }
+    el.innerHTML = leads.map(e => {
+      const cor = e.cor || '#b08fff';
+      const ini = (e.nome || '?')[0].toUpperCase();
+      const jaNoFunil = DB.deals.some(d => d.emp === e.nome);
+      const tel = (e.tel || '').replace(/\D/g, '');
+      return '<div style="background:var(--s2);border:1px solid var(--bd);border-radius:13px;overflow:hidden;margin-bottom:10px;border-left:3px solid '+cor+'">'
+        +'<div style="padding:12px 15px;display:flex;align-items:center;gap:11px">'
+        +'<div style="width:40px;height:40px;border-radius:50%;background:'+cor+';display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:#000;flex-shrink:0">'+ini+'</div>'
+        +'<div style="flex:1;min-width:0"><div style="font-weight:800;font-size:14px">'+e.nome+'</div>'
+        +'<div style="font-size:11px;color:var(--t2);margin-top:2px">'+(e.email||'—')+'</div>'
+        +'<div style="font-size:10px;color:var(--t3);margin-top:2px;font-style:italic">'+(e.obs||'')+'</div></div>'
+        +'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">'
+        +'<span style="font-size:9px;padding:3px 9px;border-radius:20px;background:rgba(176,143,255,.15);color:var(--purple);font-weight:700">🤖 Estrategista IA</span>'
+        +(jaNoFunil?'<span style="font-size:9px;padding:2px 8px;border-radius:20px;background:rgba(0,217,126,.12);color:var(--green);font-weight:700">✅ No Pipeline</span>':'<span style="font-size:9px;padding:2px 8px;border-radius:20px;background:rgba(245,166,35,.12);color:var(--gold);font-weight:700">⏳ Aguardando</span>')
+        +'</div></div>'
+        +'<div style="padding:8px 15px 12px;display:flex;gap:7px;flex-wrap:wrap;border-top:1px solid var(--bd)">'
+        +(tel?'<button class="btn" style="background:#25d366;color:#000;font-size:11px;font-weight:800;padding:5px 12px;border-radius:8px" onclick="window.open('https://wa.me/55'+tel+'','_blank')">💬 WhatsApp</button>':'')
+        +(e.email?'<button class="btn bb sm" onclick="document.getElementById('email-para-manual').value=''+e.email+'';document.getElementById('email-para-manual').style.display='block';go('email',document.querySelector('.ni[data-p=email]'))">📧 Enviar Proposta</button>':'')
+        +(!jaNoFunil?'<button class="btn bg sm" onclick="converterLeadIA(''+e.nome+'',''+e.email+'',''+cor+'')">🔥 Mover p/ Pipeline</button>':'<button class="btn bgr sm" onclick="go('pipeline',document.querySelector('.ni[data-p=pipeline]'))">🔀 Ver no Pipeline</button>')
+        +'</div></div>';
+    }).join('');
+  } catch(err) {
+    el.innerHTML = '<div style="color:var(--red);padding:20px;font-size:12px;text-align:center">❌ Erro ao carregar leads: '+err.message+'<br><br><button class="btn bgh sm" onclick="carregarLeadsEstrategista()">Tentar novamente</button></div>';
+  }
+}
+
+function converterLeadIA(nome, email, cor){
+  const emp = DB.empresas.find(e => e.nome === nome);
+  if(emp){
+    const jaNoFunil = DB.deals.find(d => d.emp === nome);
+    if(!jaNoFunil){
+      DB.deals.push({id:uid(),emp:nome,val:'0',tag:'mo',stage:0,ini:(CU?.nome||'GA').substring(0,2).toUpperCase(),cor:cor||'#b08fff'});
+      autoSave();
+      DB.notifs.unshift({ic:'🔥',t:'Lead convertido: '+nome,sub:'Movido para o Pipeline',time:nowStr(),tipo:'unread'});
+      rNotifs(); rPipeline(); updKPI();
+    }
+    toast('🔥 ' + nome + ' adicionado ao Pipeline!');
+    addFeed('🔥','rgba(176,143,255,.12)','Lead IA convertido: '+nome);
+    setTimeout(() => go('pipeline', document.querySelector('.ni[data-p="pipeline"]')), 800);
+  } else {
+    toast('⚠️ Sincronize o CRM primeiro em Configurações → Sincronizar agora');
+  }
+  carregarLeadsEstrategista();
+}
+</script>
+<!-- ===== FIM DO SCRIPT DE LEADS ===== -->
+
 </body>
 </html>
