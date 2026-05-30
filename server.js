@@ -10,7 +10,6 @@ app.post("/api/chat", async (req, res) => {
   if (!key) return res.status(500).json({ error: "ANTHROPIC_API_KEY não configurada." });
 
   try {
-    const { default: fetch } = await import("node-fetch");
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -24,7 +23,7 @@ app.post("/api/chat", async (req, res) => {
     res.status(r.status).json(data);
   } catch (err) {
     console.error("Erro:", err.message);
-    res.status(500).json({ error: "Erro ao conectar com a IA: " + err.message });
+    res.status(500).json({ error: "Erro: " + err.message });
   }
 });
 
@@ -32,5 +31,4 @@ app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("VendaMais rodando na porta " + PORT));
+app.listen(process.env.PORT || 3000, () => console.log("VendaMais online"));
