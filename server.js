@@ -5,102 +5,102 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+const KEY = process.env.ANTHROPIC_API_KEY;
 
-// ── PROXY PRINCIPAL (gerar dicas) ─────────────────────────────────────────
-app.post("/api/chat", async (req, res) => {
-  if (!ANTHROPIC_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY não configurada." });
-  try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify(req.body),
-    });
-    const data = await r.json();
-    res.status(r.status).json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── BUSCA DE VÍDEOS POR NICHO ─────────────────────────────────────────────
-app.post("/api/videos", async (req, res) => {
-  if (!ANTHROPIC_KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY não configurada." });
-
-  const { sector, sectorLabel } = req.body;
-
-  const prompt = `Você é um especialista em conteúdo educativo brasileiro no YouTube.
-
-Preciso de 4 vídeos reais do YouTube em PORTUGUÊS BRASILEIRO para o nicho: "${sectorLabel}"
-
-Retorne EXATAMENTE um JSON válido neste formato (sem markdown, sem explicação, só o JSON):
-{
-  "marketing": [
-    {"id": "ID_DO_VIDEO_YOUTUBE", "title": "Título do vídeo", "channel": "Nome do canal", "type": "aula"},
-    {"id": "ID_DO_VIDEO_YOUTUBE", "title": "Título do vídeo", "channel": "Nome do canal", "type": "conteudo"}
-  ],
-  "vendas": [
-    {"id": "ID_DO_VIDEO_YOUTUBE", "title": "Título do vídeo", "channel": "Nome do canal", "type": "aula"},
-    {"id": "ID_DO_VIDEO_YOUTUBE", "title": "Título do vídeo", "channel": "Nome do canal", "type": "conteudo"}
-  ],
-  "network": [
-    {"id": "ID_DO_VIDEO_YOUTUBE", "title": "Título do vídeo", "channel": "Nome do canal", "type": "aula"},
-    {"id": "ID_DO_VIDEO_YOUTUBE", "title": "Título do vídeo", "channel": "Nome do canal", "type": "conteudo"}
-  ]
+async function callAI(messages, system, maxTokens = 1200) {
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": KEY, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: maxTokens, system, messages }),
+  });
+  return r.json();
 }
 
-REGRAS OBRIGATÓRIAS:
-- Todos os vídeos em PORTUGUÊS BRASILEIRO
-- IDs reais e válidos do YouTube (11 caracteres)
-- "type": "aula" para videoaulas/tutoriais, "type": "conteudo" para palestras/motivacional
-- Para marketing: foco em marketing digital para ${sectorLabel}
-- Para vendas: foco em técnicas de vendas para ${sectorLabel}  
-- Para network: foco em networking e parcerias para ${sectorLabel}
-- Priorize canais conhecidos: Thiago Concer, Natanael Oliveira, Flávio Augusto, Joel Jota, G4 Educação, Sebrae, canais especializados no setor
-- Use IDs reais que você conhece com certeza — não invente IDs`;
+async function videoExists(id) {
+  try {
+    const r = await fetch(`https://img.youtube.com/vi/${id}/mqdefault.jpg`, { method: "HEAD" });
+    if (!r.ok) return false;
+    const len = r.headers.get("content-length");
+    return !len || parseInt(len) > 3000;
+  } catch { return false; }
+}
+
+// ── GERAR DICAS ───────────────────────────────────────────────────────────
+app.post("/api/chat", async (req, res) => {
+  if (!KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY não configurada." });
+  try {
+    const data = await callAI(req.body.messages, req.body.system, req.body.max_tokens || 1400);
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── BUSCAR E VALIDAR VÍDEOS POR DICA ─────────────────────────────────────
+app.post("/api/videos", async (req, res) => {
+  if (!KEY) return res.status(500).json({ error: "ANTHROPIC_API_KEY não configurada." });
+
+  const { sectorLabel, city, dicas } = req.body;
+
+  const FALLBACK = [
+    { id: "aZG9j4eqG3E", title: "Quando o Cliente Diz 'Tá Caro'", channel: "Thiago Concer", role: "principal" },
+    { id: "RAOppNOpNUI", title: "5 Técnicas de Persuasão para Fechar Vendas", channel: "Thiago Concer", role: "complementar" },
+    { id: "irTe2XF4s8k", title: "Como Fazer Network", channel: "Pablo Marçal", role: "complementar" },
+  ];
+
+  const prompt = `Você conhece vídeos reais do YouTube em português brasileiro.
+
+Para uma empresa do nicho "${sectorLabel}" na cidade "${city || "Brasil"}", preciso de vídeos para aprofundar cada uma das 3 dicas abaixo.
+
+DICAS GERADAS:
+${dicas.map((d, i) => `${i + 1}. Tema: ${d.tema} — ${d.resumo}`).join("\n")}
+
+Para cada dica, sugira 3 vídeos reais do YouTube:
+- "principal": vídeo diretamente sobre o tema da dica
+- "complementar1": aprofunda a técnica ou psicologia por trás
+- "complementar2": mentalidade ou hábito que sustenta a prática
+
+Retorne APENAS JSON válido sem markdown:
+{
+  "dica1": [
+    {"id":"XXXXXXXXXXX","title":"título exato","channel":"canal exato","role":"principal"},
+    {"id":"XXXXXXXXXXX","title":"título exato","channel":"canal exato","role":"complementar1"},
+    {"id":"XXXXXXXXXXX","title":"título exato","channel":"canal exato","role":"complementar2"}
+  ],
+  "dica2": [...],
+  "dica3": [...]
+}
+
+REGRAS ABSOLUTAS:
+- IDs de exatamente 11 caracteres
+- Apenas vídeos que você tem CERTEZA que existem no YouTube
+- Todos em português brasileiro
+- Canais de referência: Thiago Concer, G4 Educação, Natanael Oliveira, Joel Jota, Flávio Augusto, Sebrae, Pablo Marçal, Leandro Ladeira, Conquer, Me Poupe
+- Se não tiver certeza do ID, use um desses IDs garantidos: aZG9j4eqG3E, RAOppNOpNUI, dQOXsn7kKyo, irTe2XF4s8k, 3466p8uVwEQ, s4tU92xq5Os`;
 
   try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1000,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    const data = await r.json();
+    const data = await callAI([{ role: "user", content: prompt }], "", 1000);
     const text = data.content?.map(b => b.text || "").join("") || "{}";
+    const suggested = JSON.parse(text.replace(/```json|```/g, "").trim());
 
-    // Parse JSON safely
-    const clean = text.replace(/```json|```/g, "").trim();
-    const videos = JSON.parse(clean);
-    res.json(videos);
+    const result = { dica1: [], dica2: [], dica3: [] };
+
+    for (const key of ["dica1", "dica2", "dica3"]) {
+      const candidates = suggested[key] || [];
+      for (const v of candidates) {
+        if (!v.id || v.id.length !== 11) continue;
+        const ok = await videoExists(v.id);
+        console.log(`${ok ? "✅" : "❌"} ${key} ${v.id} — ${v.title}`);
+        if (ok) result[key].push(v);
+      }
+      if (result[key].length < 3) {
+        const missing = 3 - result[key].length;
+        result[key].push(...FALLBACK.slice(0, missing));
+      }
+    }
+
+    res.json(result);
   } catch (err) {
-    console.error("Erro ao buscar vídeos:", err.message);
-    // Fallback com vídeos garantidos
-    res.json({
-      marketing: [
-        { id: "3466p8uVwEQ", title: "Marketing Digital para Iniciantes e Avançados", channel: "Natanael Oliveira", type: "aula" },
-        { id: "38gX3WT5mqk", title: "Marketing Digital 2026: Tendências", channel: "Natanael Oliveira", type: "conteudo" },
-      ],
-      vendas: [
-        { id: "aZG9j4eqG3E", title: "Quando o Cliente Diz 'Tá Caro' — O Maior Vídeo de Vendas do Brasil", channel: "Thiago Concer", type: "aula" },
-        { id: "dQOXsn7kKyo", title: "O Que Todo Vendedor Precisa Saber", channel: "Thiago Concer", type: "conteudo" },
-      ],
-      network: [
-        { id: "irTe2XF4s8k", title: "Como Fazer Network — Pablo Marçal", channel: "Empreender é Mais", type: "aula" },
-        { id: "s4tU92xq5Os", title: "Joel Jota, Caio Carneiro e Flávio Augusto sobre Negócios", channel: "Inteligência Ltda", type: "conteudo" },
-      ],
-    });
+    console.error("Erro vídeos:", err.message);
+    res.json({ dica1: FALLBACK, dica2: FALLBACK, dica3: FALLBACK });
   }
 });
 
